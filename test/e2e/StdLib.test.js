@@ -1,5 +1,4 @@
 const { execute } = require("../../lib/");
-const BrsError = require("../../lib/Error");
 
 const { createMockStreams, resourceFile, allArgs } = require("./E2ETests");
 
@@ -24,7 +23,15 @@ describe("end to end standard libary", () => {
                 allArgs(outputStreams.stdout.write).filter(arg => arg !== "\n")
             ).toEqual([
                 "false",
-                "true"
+                "true",
+                "true",
+                "true",
+                "true",
+                "true",
+                "false",
+                "true",
+                "false",
+                "<Component: roArray> =\n[\n    test_backup.txt\n]"
             ]);
         });
     });
@@ -75,5 +82,37 @@ describe("end to end standard libary", () => {
                 "-1"
             ]);
         });
-    })
+    });
+
+    test("stdlib/runtime.brs", () => {
+        return execute([ resourceFile("stdlib", "runtime.brs") ], outputStreams).then(() => {
+            expect(
+                allArgs(outputStreams.stdout.write).filter(arg => arg !== "\n")
+            ).toEqual([
+                "true"
+            ]);
+        });
+    });
+
+    test("stdlib/json.brs", () => {
+        return execute([resourceFile("stdlib", "json.brs")], outputStreams).then(() => {
+            expect(
+                allArgs(outputStreams.stdout.write).filter(arg => arg !== "\n")
+            ).toEqual([
+                "",
+                `{"boolean":false,"float":3.14,"integer":2147483647,"longinteger":2147483650,"null":null,"string":"ok"}`,
+                [
+                    "<Component: roAssociativeArray> =",
+                    "{",
+                    "    boolean: false",
+                    "    float: 3.14",
+                    "    integer: 2147483647",
+                    "    longinteger: 2147483650",
+                    "    null: invalid",
+                    "    string: ok",
+                   "}"
+                ].join("\n")
+            ]);
+        })
+    });
 });

@@ -1,6 +1,9 @@
 # BRS: Off-Roku BrightScript
 An interpreter for the BrightScript language that runs on non-Roku platforms.
 
+[![CircleCI](https://circleci.com/gh/sjbarag/brs.svg?style=svg)](https://circleci.com/gh/sjbarag/brs)
+[![NPM Version](https://badge.fury.io/js/brs.svg?style=flat)](https://npmjs.org/package/brs)
+
 ## Installation
 The BRS project is published as a `node` package, so use `npm`:
 
@@ -86,13 +89,15 @@ index.d.ts (and friends)
 ```
 
 #### Testing
-Tests are written with [Facebook's Jest](http://facebook.github.io/jest/), and can be run with the `test` target:
+Tests are written in plain-old JavaScript with [Facebook's Jest](http://facebook.github.io/jest/), and can be run with the `test` target:
 
 ```shell
 $ yarn test
 
 # tests start running
 ```
+
+Note that only test files ending in `.test.js` will be executed by `yarn test`.
 
 #### Cleaning
 Compiled output in `lib/` and `types/` can be removed with the `clean` target:

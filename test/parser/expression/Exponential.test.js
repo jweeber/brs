@@ -1,46 +1,49 @@
-const Parser = require("../../../lib/parser");
-const BrsError = require("../../../lib/Error");
-const { Lexeme, BrsTypes } = require("brs");
-const { Int32 } = BrsTypes;
+const brs = require("brs");
+const { Lexeme } = brs.lexer;
+const { Int32 } = brs.types;
 
-const { EOF } = require("../ParserTests");
+const { token, identifier, EOF } = require("../ParserTests");
 
 describe("parser", () => {
-    afterEach(() => BrsError.reset());
+    let parser;
+
+    beforeEach(() => {
+        parser = new brs.parser.Parser();
+    });
 
     describe("exponential expressions", () => {
         it("parses exponential operators", () => {
-            let parsed = Parser.parse([
-                { kind: Lexeme.Identifier, text: "_", line: 1 },
-                { kind: Lexeme.Equal, text: "=", line: 1 },
-                { kind: Lexeme.Integer, text: "2", literal: new Int32(2), line: 1 },
-                { kind: Lexeme.Caret, text: "^", line: 1 },
-                { kind: Lexeme.Integer, text: "3", literal: new Int32(3), line: 1 },
+            let { statements, errors } = parser.parse([
+                identifier("_"),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.Integer, "2", new Int32(2)),
+                token(Lexeme.Caret, "^"),
+                token(Lexeme.Integer, "3", new Int32(3)),
                 EOF
             ]);
 
-            expect(BrsError.found()).toBeFalsy();
-            expect(parsed).toBeDefined();
-            expect(parsed).not.toBeNull();
-            expect(parsed).toMatchSnapshot();
+            expect(errors).toEqual([]);
+            expect(statements).toBeDefined();
+            expect(statements).not.toBeNull();
+            expect(statements).toMatchSnapshot();
         });
 
         it("parses repeated exponential operators as left-associative", () => {
-            let parsed = Parser.parse([
-                { kind: Lexeme.Identifier, text: "_", line: 1 },
-                { kind: Lexeme.Equal, text: "=", line: 1 },
-                { kind: Lexeme.Integer, text: "2", literal: new Int32(2), line: 1 },
-                { kind: Lexeme.Caret, text: "^", line: 1 },
-                { kind: Lexeme.Integer, text: "3", literal: new Int32(3), line: 1 },
-                { kind: Lexeme.Caret, text: "^", line: 1 },
-                { kind: Lexeme.Integer, text: "4", literal: new Int32(4), line: 1 },
+            let { statements, errors } = parser.parse([
+                identifier("_"),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.Integer, "2", new Int32(2)),
+                token(Lexeme.Caret, "^"),
+                token(Lexeme.Integer, "3", new Int32(3)),
+                token(Lexeme.Caret, "^"),
+                token(Lexeme.Integer, "4", new Int32(4)),
                 EOF
             ]);
 
-            expect(BrsError.found()).toBeFalsy();
-            expect(parsed).toBeDefined();
-            expect(parsed).not.toBeNull();
-            expect(parsed).toMatchSnapshot();
+            expect(errors).toEqual([]);
+            expect(statements).toBeDefined();
+            expect(statements).not.toBeNull();
+            expect(statements).toMatchSnapshot();
         });
     });
 });

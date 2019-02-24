@@ -1,61 +1,180 @@
-const Parser = require("../../../lib/parser");
-const Expr = require("../../../lib/parser/Expression");
-const BrsError = require("../../../lib/Error");
-const { Lexeme, BrsTypes } = require("brs");
-const { Int32 } = BrsTypes;
+const brs = require("brs");
+const { Lexeme } = brs.lexer;
+const { Int32 } = brs.types;
 
-const { EOF } = require("../ParserTests");
+const { token, identifier, EOF } = require("../ParserTests");
 
 describe("parser for loops", () => {
-    afterEach(() => BrsError.reset());
+    let parser;
+
+    beforeEach(() => {
+        parser = new brs.parser.Parser();
+    });
 
     it("accepts a 'step' clause", () => {
-        let parsed = Parser.parse([
-            { kind: Lexeme.For, text: "for", line: 1 },
-            { kind: Lexeme.Identifier, text: "i", line: 1 },
-            { kind: Lexeme.Equal, text: "=", line: 1 },
-            { kind: Lexeme.Integer, text: "0", literal: new Int32(0), line: 1 },
-            { kind: Lexeme.To, text: "to", line: 1 },
-            { kind: Lexeme.Integer, text: "5", literal: new Int32(5), line: 1 },
-            { kind: Lexeme.Step, text: "step", line: 1 },
-            { kind: Lexeme.Integer, text: "2", literal: new Int32(2), line: 1 },
-            { kind: Lexeme.Newline, text: "\n", line: 1 },
+        let { statements, errors } = parser.parse([
+            token(Lexeme.For, "for"),
+            identifier("i"),
+            token(Lexeme.Equal, "="),
+            token(Lexeme.Integer, "0", new Int32(0)),
+            token(Lexeme.To, "to"),
+            token(Lexeme.Integer, "5", new Int32(5)),
+            token(Lexeme.Step, "step"),
+            token(Lexeme.Integer, "2", new Int32(2)),
+            token(Lexeme.Newline, "\n"),
             // body would go here, but it's not necessary for this test
-            { kind: Lexeme.EndFor, text: "end for", line: 2 },
-            { kind: Lexeme.Newline, text: "\n", line: 2 },
+            token(Lexeme.EndFor, "end for"),
+            token(Lexeme.Newline, "\n"),
             EOF
         ]);
 
-        expect(BrsError.found()).toBe(false);
-        expect(parsed).toBeDefined();
-        expect(parsed[0]).toBeDefined();
-        expect(parsed[0].increment).toBeDefined();
-        expect(parsed[0].increment.value).toEqual(new Int32(2));
+        expect(errors).toEqual([])
+        expect(statements).toBeDefined();
+        expect(statements[0]).toBeDefined();
+        expect(statements[0].increment).toBeDefined();
+        expect(statements[0].increment.value).toEqual(new Int32(2));
 
-        expect(parsed).toMatchSnapshot();
+        expect(statements).toMatchSnapshot();
     });
 
     it("defaults a missing 'step' clause to '1'", () => {
-        let parsed = Parser.parse([
-            { kind: Lexeme.For, text: "for", line: 1 },
-            { kind: Lexeme.Identifier, text: "i", line: 1 },
-            { kind: Lexeme.Equal, text: "=", line: 1 },
-            { kind: Lexeme.Integer, text: "0", literal: new Int32(0), line: 1 },
-            { kind: Lexeme.To, text: "to", line: 1 },
-            { kind: Lexeme.Integer, text: "5", literal: new Int32(5), line: 1 },
-            { kind: Lexeme.Newline, text: "\n", line: 1 },
+        let { statements, errors } = parser.parse([
+            token(Lexeme.For, "for"),
+            identifier("i"),
+            token(Lexeme.Equal, "="),
+            token(Lexeme.Integer, "0", new Int32(0)),
+            token(Lexeme.To, "to"),
+            token(Lexeme.Integer, "5", new Int32(5)),
+            token(Lexeme.Newline, "\n"),
             // body would go here, but it's not necessary for this test
-            { kind: Lexeme.EndFor, text: "end for", line: 2 },
-            { kind: Lexeme.Newline, text: "\n", line: 2 },
+            token(Lexeme.EndFor, "end for"),
+            token(Lexeme.Newline, "\n"),
             EOF
         ]);
 
-        expect(BrsError.found()).toBe(false);
-        expect(parsed).toBeDefined();
-        expect(parsed[0]).toBeDefined();
-        expect(parsed[0].increment).toBeDefined();
-        expect(parsed[0].increment.value).toEqual(new Int32(1));
+        expect(errors).toEqual([])
+        expect(statements).toBeDefined();
+        expect(statements[0]).toBeDefined();
+        expect(statements[0].increment).toBeDefined();
+        expect(statements[0].increment.value).toEqual(new Int32(1));
 
-        expect(parsed).toMatchSnapshot();
+        expect(statements).toMatchSnapshot();
+    });
+
+    it("allows 'next' to terminate loop", () => {
+        let { statements, errors } = parser.parse([
+            token(Lexeme.For, "for"),
+            identifier("i"),
+            token(Lexeme.Equal, "="),
+            token(Lexeme.Integer, "0", new Int32(0)),
+            token(Lexeme.To, "to"),
+            token(Lexeme.Integer, "5", new Int32(5)),
+            token(Lexeme.Newline, "\n"),
+            // body would go here, but it's not necessary for this test
+            token(Lexeme.Next, "next"),
+            token(Lexeme.Newline, "\n"),
+            EOF
+        ]);
+
+        expect(errors).toEqual([]);
+        expect(statements).toBeDefined();
+        expect(statements).toMatchSnapshot();
+    });
+
+    test("location tracking", () => {
+        /**
+         *    0   0   0   1   1
+         *    0   4   8   2   6
+         *  +------------------
+         * 1| for i = 0 to 10
+         * 2|   Rnd(i)
+         * 3| end for
+         */
+        let { statements, errors } = parser.parse([
+            {
+                kind: Lexeme.For,
+                text: "for",
+                isReserved: true,
+                location: {
+                    start: { line: 1, column: 0 },
+                    end: { line: 1, column: 3 }
+                }
+            },
+            {
+                kind: Lexeme.Identifier,
+                text: "i",
+                isReserved: false,
+                location: {
+                    start: { line: 1, column: 4 },
+                    end: { line: 1, column: 5 }
+                }
+            },
+            {
+                kind: Lexeme.Equal,
+                text: "=",
+                isReserved: false,
+                location: {
+                    start: { line: 1, column: 6 },
+                    end: { line: 1, column: 7 }
+                }
+            },
+            {
+                kind: Lexeme.Integer,
+                text: "0",
+                literal: new Int32(0),
+                isReserved: false,
+                location: {
+                    start: { line: 1, column: 8 },
+                    end: { line: 1, column: 9 }
+                }
+            },
+            {
+                kind: Lexeme.To,
+                text: "to",
+                isReserved: false,
+                location: {
+                    start: { line: 1, column: 10 },
+                    end: { start: 1, column: 12 }
+                }
+            },
+            {
+                kind: Lexeme.Integer,
+                text: "10",
+                literal: new Int32(10),
+                isReserved: false,
+                location: {
+                    start: { line: 1, column: 13 },
+                    end: { line: 1, column: 15 }
+                }
+            },
+            {
+                kind: Lexeme.Newline,
+                text: "\n",
+                isReserved: false,
+                location: {
+                    start: { line: 1, column: 15 },
+                    end: { line: 1, column: 16 }
+                }
+            },
+            // loop body isn't significant for location tracking, so helper functions are safe
+            identifier("Rnd"), token(Lexeme.LeftParen, "("), identifier("i"), token(Lexeme.RightParen, ")"), token(Lexeme.Newline, "\n"),
+            {
+                kind: Lexeme.EndFor,
+                text: "end for",
+                isReserved: false,
+                location: {
+                    start: { line: 3, column: 0 },
+                    end: { line: 3, column: 8 }
+                }
+            },
+            EOF
+        ]);
+
+        expect(errors).toEqual([]);
+        expect(statements.length).toBe(1);
+        expect(statements[0].location).toEqual({
+            start: { line: 1, column: 0 },
+            end: { line: 3, column: 8 }
+        });
     });
 });

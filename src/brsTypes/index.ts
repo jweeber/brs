@@ -6,6 +6,7 @@ import { Int64 } from "./Int64";
 import { Float } from "./Float";
 import { Double } from "./Double";
 import { Callable, CallableImplementation } from "./Callable";
+import { Lexeme } from "../lexer";
 
 export * from "./BrsType";
 export * from "./Int32";
@@ -14,6 +15,8 @@ export * from "./Float";
 export * from "./Double";
 export * from "./components/BrsArray";
 export * from "./components/AssociativeArray";
+export * from "./components/Timespan";
+export * from "./components/BrsObjects";
 export * from "./Callable";
 
 /**
@@ -61,23 +64,16 @@ export function isBrsCallable(value: BrsType): value is Callable {
 }
 
 /**
- * Determines whether or not the provided value is an instance of a interable BrightScript type.
+ * Determines whether or not the provided value is an instance of a iterable BrightScript type.
  * @param value the BrightScript value in question.
  * @returns `true` if `value` can be iterated across, otherwise `false`.
  */
 export function isIterable(value: BrsType): value is Iterable {
-    switch (value.kind) {
-        case ValueKind.Array:
-        case ValueKind.AssociativeArray:
-            return true;
-        default:
-            return false;
+    if (value.kind !== ValueKind.Object) {
+        return false;
     }
-}
 
-/** Determines whether or not the provided value is comparable to other BrightScript values. */
-export function isComparable(value: BrsType): value is BrsPrimitive {
-    return value.kind < ValueKind.Array;
+    return value.getElements != null;
 }
 
 /** The set of BrightScript numeric types. */

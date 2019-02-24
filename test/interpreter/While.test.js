@@ -1,31 +1,33 @@
-const BrsError = require("../../lib/Error");
 const Expr = require("../../lib/parser/Expression");
 const Stmt = require("../../lib/parser/Statement");
 const { Interpreter } = require("../../lib/interpreter");
-const { Lexeme, BrsTypes } = require("brs");
-const { Int32 } = BrsTypes;
-const { identifier } = require("../parser/ParserTests");
+const brs = require("brs");
+const { Lexeme } = brs.lexer;
+const { Int32 } = brs.types;
+
+const { token, identifier } = require("../parser/ParserTests");
 
 let interpreter;
 let decrementSpy;
 
 describe("interpreter while loops", () => {
     const initializeFoo = new Stmt.Assignment(
+        { equals: token(Lexeme.Equals, "=") },
         identifier("foo"),
         new Expr.Literal(new Int32(5))
     );
 
     const decrementFoo = new Stmt.Assignment(
+        { equals: token(Lexeme.Equals, "=") },
         identifier("foo"),
         new Expr.Binary(
             new  Expr.Variable(identifier("foo")),
-            { kind: Lexeme.Minus, text: "-" },
+            token(Lexeme.Minus, "-"),
             new Expr.Literal(new Int32(1))
         )
     );
 
     beforeEach(() => {
-        BrsError.reset();
         decrementSpy = jest.spyOn(decrementFoo, "accept");
 
         interpreter = new Interpreter();
@@ -40,9 +42,13 @@ describe("interpreter while loops", () => {
         const statements = [
             initializeFoo,
             new Stmt.While(
+                {
+                    while: token(Lexeme.While, "while"),
+                    endWhile: token(Lexeme.EndWhile, "end while")
+                },
                 new Expr.Binary(
                     new Expr.Variable(identifier("foo")),
-                    { kind: Lexeme.Greater, text: ">" },
+                    token(Lexeme.Greater, ">"),
                     new Expr.Literal(new Int32(0))
                 ),
                 new Stmt.Block([
@@ -59,7 +65,7 @@ describe("interpreter while loops", () => {
     it("evaluates 'condition' before every loop", () => {
         const greaterThanZero = new Expr.Binary(
             new Expr.Variable(identifier("foo")),
-            { kind: Lexeme.Greater, text: ">" },
+            token(Lexeme.Greater, ">"),
             new Expr.Literal(new Int32(0))
         );
         jest.spyOn(greaterThanZero, "accept");
@@ -67,6 +73,10 @@ describe("interpreter while loops", () => {
         const statements = [
             initializeFoo,
             new Stmt.While(
+                {
+                    while: token(Lexeme.While, "while"),
+                    endWhile: token(Lexeme.EndWhile, "end while")
+                },
                 greaterThanZero,
                 new Stmt.Block([
                     decrementFoo
@@ -83,9 +93,13 @@ describe("interpreter while loops", () => {
         const statements = [
             initializeFoo,
             new Stmt.While(
+                {
+                    while: token(Lexeme.While, "while"),
+                    endWhile: token(Lexeme.EndWhile, "end while")
+                },
                 new Expr.Binary(
                     new Expr.Variable(identifier("foo")),
-                    { kind: Lexeme.Greater, text: ">" },
+                    token(Lexeme.Greater, ">"),
                     new Expr.Literal(new Int32(0))
                 ),
                 new Stmt.Block([

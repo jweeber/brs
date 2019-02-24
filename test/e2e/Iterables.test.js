@@ -1,6 +1,4 @@
-const fs = require("fs");
 const { execute } = require("../../lib/");
-const BrsError = require("../../lib/Error");
 
 const { createMockStreams, resourceFile, allArgs } = require("./E2ETests");
 
@@ -39,7 +37,7 @@ describe("end to end iterables", () => {
                 // iterate through keys
                 "has-second-layer",
                 "level",
-                "secondLayer",
+                "secondlayer",
 
                 // twoDimensional.secondLayer.level
                 "2",

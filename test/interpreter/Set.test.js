@@ -1,15 +1,16 @@
-const BrsError = require("../../lib/Error");
 const Expr = require("../../lib/parser/Expression");
 const Stmt = require("../../lib/parser/Statement");
 const { Interpreter } = require("../../lib/interpreter");
-const { Lexeme, BrsTypes } = require("brs");
-const { Int32, BrsString } = BrsTypes;
+const brs = require("brs");
+const { Lexeme } = brs.lexer;
+const { Int32, BrsString } = brs.types;
+
+const { token, identifier } = require("../parser/ParserTests");
 
 let interpreter;
 
 describe("property setting", () => {
     beforeEach(() => {
-        BrsError.reset();
         interpreter = new Interpreter();
     });
 
@@ -17,7 +18,8 @@ describe("property setting", () => {
         test("one-dimensional", () => {
             let ast = [
                 new Stmt.Assignment(
-                    { kind: Lexeme.Identifier, text: "array", line: 1 },
+                    { equals: token(Lexeme.Equals, "=") },
+                    identifier("array"),
                     new Expr.ArrayLiteral([
                         new Expr.Literal(new BrsString("index0")),
                         new Expr.Literal(new BrsString("index1")),
@@ -25,27 +27,27 @@ describe("property setting", () => {
                     ])
                 ),
                 new Stmt.IndexedSet(
-                    new Expr.Variable({ kind: Lexeme.Identifier, text: "array", line: 2 }),
+                    new Expr.Variable(identifier("array")),
                     new Expr.Literal(new Int32(0)),
                     new Expr.Literal(new BrsString("new index0")),
-                    { kind: Lexeme.RightSquare, text: "]", line: 2 }
+                    token(Lexeme.RightSquare, "]")
                 ),
                 new Stmt.Assignment(
-                    { kind: Lexeme.Identifier, text: "result", line: 3 },
+                    { equals: token(Lexeme.Equals, "=") },
+                    identifier("result"),
                     new Expr.IndexedGet(
-                        new Expr.Variable({ kind: Lexeme.Identifier, text: "array", line: 3 }),
+                        new Expr.Variable(identifier("array")),
                         new Expr.Literal(new Int32(0)),
-                        { kind: Lexeme.RightSquare, text: "]", line: 3 }
+                        token(Lexeme.RightSquare, "]")
                     )
                 )
             ];
 
             interpreter.exec(ast);
 
-            expect(BrsError.found()).toBe(false);
             expect(
                 interpreter.environment.get(
-                    { kind: Lexeme.Identifier, text: "result", line: -1 }
+                    identifier("result")
                 )
             ).toEqual(new BrsString("new index0"));
         });
@@ -53,7 +55,8 @@ describe("property setting", () => {
         test("multi-dimensional", () => {
             let ast = [
                 new Stmt.Assignment(
-                    { kind: Lexeme.Identifier, text: "array", line: 1 },
+                    { equals: token(Lexeme.Equals, "=") },
+                    identifier("array"),
                     new Expr.ArrayLiteral([
                         new Expr.ArrayLiteral([
                             new Expr.Literal(new BrsString("(0,0)")),
@@ -74,33 +77,33 @@ describe("property setting", () => {
                 ),
                 new Stmt.IndexedSet(
                     new Expr.IndexedGet(
-                        new Expr.Variable({ kind: Lexeme.Identifier, text: "array", line: 2 }),
+                        new Expr.Variable(identifier("array")),
                         new Expr.Literal(new Int32(2)),
                     ),
                     new Expr.Literal(new Int32(1)),
                     new Expr.Literal(new BrsString("new (2,1)")),
-                    { kind: Lexeme.RightSquare, text: "]", line: 2 }
+                    token(Lexeme.RightSquare, "]")
                 ),
                 new Stmt.Assignment(
-                    { kind: Lexeme.Identifier, text: "result", line: 3 },
+                    { equals: token(Lexeme.Equals, "=") },
+                    identifier("result"),
                     new Expr.IndexedGet(
                         new Expr.IndexedGet(
-                            new Expr.Variable({ kind: Lexeme.Identifier, text: "array", line: 2 }),
+                            new Expr.Variable(identifier("array")),
                             new Expr.Literal(new Int32(2)),
-                            { kind: Lexeme.RightSquare, text: "]", line: 3 }
+                            token(Lexeme.RightSquare, "]")
                         ),
                         new Expr.Literal(new Int32(1)),
-                        { kind: Lexeme.RightSquare, text: "]", line: 3 }
+                        token(Lexeme.RightSquare, "]")
                     )
                 )
             ];
 
             interpreter.exec(ast);
 
-            expect(BrsError.found()).toBe(false);
             expect(
                 interpreter.environment.get(
-                    { kind: Lexeme.Identifier, text: "result", line: -1 }
+                    identifier("result")
                 )
             ).toEqual(new BrsString("new (2,1)"));
         });
@@ -110,7 +113,8 @@ describe("property setting", () => {
         test("one-dimensional", () => {
             let ast = [
                 new Stmt.Assignment(
-                    { kind: Lexeme.Identifier, text: "aa", line: 1 },
+                    { equals: token(Lexeme.Equals, "=") },
+                    identifier("aa"),
                     new Expr.AALiteral([
                         {
                             name: new BrsString("foo"),
@@ -119,44 +123,44 @@ describe("property setting", () => {
                     ])
                 ),
                 new Stmt.DottedSet(
-                    new Expr.Variable({ kind: Lexeme.Identifier, text: "aa", line: 2 }),
-                    { kind: Lexeme.Identifier, text: "foo", line: 2 },
+                    new Expr.Variable(identifier("aa")),
+                    identifier("foo"),
                     new Expr.Literal(new BrsString("new foo"))
                 ),
                 new Stmt.IndexedSet(
-                    new Expr.Variable({ kind: Lexeme.Identifier, text: "aa", line: 3 }),
+                    new Expr.Variable(identifier("aa")),
                     new Expr.Literal(new BrsString("bar")),
                     new Expr.Literal(new BrsString("added bar")),
-                    { kind: Lexeme.RightSquare, text: "]", line: 3 }
+                    token(Lexeme.RightSquare, "]")
                 ),
                 new Stmt.Assignment(
-                    { kind: Lexeme.Identifier, text: "fooResult", line: 4 },
+                    { equals: token(Lexeme.Equals, "=") },
+                    identifier("fooResult"),
                     new Expr.DottedGet(
-                        new Expr.Variable({ kind: Lexeme.Identifier, text: "aa", line: 4 }),
-                        { kind: Lexeme.Identifier, text: "foo", line: 4 }
+                        new Expr.Variable(identifier("aa")),
+                        identifier("foo")
                     )
                 ),
                 new Stmt.Assignment(
-                    { kind: Lexeme.Identifier, text: "barResult", line: 5 },
+                    { equals: token(Lexeme.Equals, "=") },
+                    identifier("barResult"),
                     new Expr.DottedGet(
-                        new Expr.Variable({ kind: Lexeme.Identifier, text: "aa", line: 5 }),
-                        { kind: Lexeme.Identifier, text: "bar", line: 5 }
+                        new Expr.Variable(identifier("aa")),
+                        identifier("bar")
                     )
                 )
             ];
 
             interpreter.exec(ast);
 
-            expect(BrsError.found()).toBeFalsy();
-
             expect(
                 interpreter.environment.get(
-                    { kind: Lexeme.Identifier, text: "fooResult", line: -1 }
+                    identifier("fooResult")
                 )
             ).toEqual(new BrsString("new foo"));
             expect(
                 interpreter.environment.get(
-                    { kind: Lexeme.Identifier, text: "barResult", line: -1 }
+                    identifier("barResult")
                 )
             ).toEqual(new BrsString("added bar"));
         });
@@ -164,7 +168,8 @@ describe("property setting", () => {
         test("multi-dimensional", () => {
             let ast = [
                 new Stmt.Assignment(
-                    { kind: Lexeme.Identifier, text: "aa", line: 1 },
+                    { equals: token(Lexeme.Equals, "=") },
+                    identifier("aa"),
                     new Expr.AALiteral([
                         {
                             name: new BrsString("foo"),
@@ -179,56 +184,56 @@ describe("property setting", () => {
                 ),
                 new Stmt.DottedSet(
                     new Expr.IndexedGet(
-                        new Expr.Variable({ kind: Lexeme.Identifier, text: "aa", line: 2 }),
+                        new Expr.Variable(identifier("aa")),
                         new Expr.Literal(new BrsString("foo")),
-                        { kind: Lexeme.RightSquare, text: "]", line: 2 }
+                        token(Lexeme.RightSquare, "]")
                     ),
-                    { kind: Lexeme.Identifier, text: "bar", line: 2 },
+                    identifier("bar"),
                     new Expr.Literal(new BrsString("new aa.foo.bar"))
                 ),
                 new Stmt.IndexedSet(
                     new Expr.DottedGet(
-                        new Expr.Variable({ kind: Lexeme.Identifier, text: "aa", line: 3 }),
-                        { kind: Lexeme.Identifier, text: "foo", line: 3 }
+                        new Expr.Variable(identifier("aa")),
+                        identifier("foo")
                     ),
                     new Expr.Literal(new BrsString("baz")),
                     new Expr.Literal(new BrsString("added aa.foo.baz")),
-                    { kind: Lexeme.RightSquare, text: "]", line: 3 }
+                    token(Lexeme.RightSquare, "]")
                 ),
                 new Stmt.Assignment(
-                    { kind: Lexeme.Identifier, text: "barResult", line: 4 },
+                    { equals: token(Lexeme.Equals, "=") },
+                    identifier("barResult"),
                     new Expr.DottedGet(
                         new Expr.DottedGet(
-                            new Expr.Variable({ kind: Lexeme.Identifier, text: "aa", line: 4 }),
-                            { kind: Lexeme.Identifier, text: "foo", line: 4 }
+                            new Expr.Variable(identifier("aa")),
+                            identifier("foo")
                         ),
-                        { kind: Lexeme.Identifier, text: "bar", line: 4 }
+                        identifier("bar")
                     )
                 ),
                 new Stmt.Assignment(
-                    { kind: Lexeme.Identifier, text: "bazResult", line: 5 },
+                    { equals: token(Lexeme.Equals, "=") },
+                    identifier("bazResult"),
                     new Expr.DottedGet(
                         new Expr.DottedGet(
-                            new Expr.Variable({ kind: Lexeme.Identifier, text: "aa", line: 5 }),
-                            { kind: Lexeme.Identifier, text: "foo", line: 5 }
+                            new Expr.Variable(identifier("aa")),
+                            identifier("foo")
                         ),
-                        { kind: Lexeme.Identifier, text: "baz", line: 5 }
+                        identifier("baz")
                     )
                 )
             ];
 
             interpreter.exec(ast);
 
-            expect(BrsError.found()).toBeFalsy();
-
             expect(
                 interpreter.environment.get(
-                    { kind: Lexeme.Identifier, text: "barResult", line: -1 }
+                    identifier("barResult")
                 )
             ).toEqual(new BrsString("new aa.foo.bar"));
             expect(
                 interpreter.environment.get(
-                    { kind: Lexeme.Identifier, text: "bazResult", line: -1 }
+                    identifier("bazResult")
                 )
             ).toEqual(new BrsString("added aa.foo.baz"));
         });

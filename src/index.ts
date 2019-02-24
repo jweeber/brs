@@ -1,60 +1,98 @@
 import * as fs from "fs";
 import * as readline from "readline";
+import promisify from "pify";
+import pSettle from "p-settle";
+const readFile = promisify(fs.readFile);
 
-import { Token, Lexer } from "./lexer";
-import * as Parser from "./parser";
-import { Interpreter, OutputStreams } from "./interpreter";
-import { stringify } from "./Stringify";
+import { Lexer } from "./lexer";
+import * as PP from "./preprocessor";
+import { Parser } from "./parser";
+import { Interpreter, ExecutionOptions, defaultExecutionOptions } from "./interpreter";
 import * as BrsError from "./Error";
 
-export { Lexeme, Token, Lexer } from "./lexer";
+import * as _lexer from "./lexer";
+export { _lexer as lexer };
 import * as BrsTypes from "./brsTypes";
-export { BrsTypes };
+export { BrsTypes as types };
+export { PP as preprocessor };
+import * as _parser from "./parser";
+export { _parser as parser };
 
-/** The `stdout`/`stderr` pair from the process that invoked `brs`. */
-const processOutput: OutputStreams = {
-    stdout: process.stdout,
-    stderr: process.stderr
-};
 
 /**
  * Executes a BrightScript file by path and writes its output to the streams
  * provided in `options`.
  *
  * @param filename the absolute path to the `.brs` file to be executed
- * @param options the streams to use for `stdout` and `stderr`. Mostly used for
- *                testing.
+ * @param options configuration for the execution, including the streams to use for `stdout` and
+ *                `stderr` and the base directory for path resolution
  *
  * @returns a `Promise` that will be resolve if `filename` is successfully
  *          executed, or be rejected if an error occurs.
  */
-export async function execute(filenames: string[], options: OutputStreams = processOutput) {
-    return new Promise((resolve, reject) => {
-        const interpreter = new Interpreter(options); // shared between files
+export async function execute(filenames: string[], options: Partial<ExecutionOptions>) {
+    const executionOptions = Object.assign(defaultExecutionOptions, options);
 
-        let brsError;
-        for (let filename of filenames) {
-            try {
-                let contents = fs.readFileSync(filename, "utf-8");
-                run(contents, options, interpreter);
-                if (BrsError.found()) {
-                    brsError = "Error occurred";
-                    break;
-                }
-            } catch (readError) {
-                brsError = `brs: can't open file '${filename}': [Errno ${readError.errno}]`;
-                break;
-            }
-        }
+    let manifest = await PP.getManifest(executionOptions.root);
 
-        if (brsError == null) {
-            resolve();
-        } else  {
-            reject({
-                "message" : brsError
+    // wait for all files to be read, lexed, and parsed, but don't exit on the first error
+    let parsedFiles = await pSettle(filenames.map(async (filename) => {
+        let contents;
+        try {
+            contents = await readFile(filename, "utf-8");
+        } catch (err) {
+            return Promise.reject({
+                message: `brs: can't open file '${filename}': [Errno ${err.errno}]`
             });
         }
-    });
+
+        let lexer = new Lexer();
+        let preprocessor = new PP.Preprocessor();
+        let parser = new Parser();
+        [lexer, preprocessor, parser].forEach(emitter => emitter.onError(logError));
+
+        let scanResults = lexer.scan(contents, filename);
+        if (scanResults.errors.length > 0) {
+            return Promise.reject({
+                message: "Error occurred during lexing"
+            });
+        }
+
+        let preprocessResults = preprocessor.preprocess(scanResults.tokens, manifest);
+        if (preprocessResults.errors.length > 0) {
+            return Promise.reject({
+                message: "Error occurred during pre-processing"
+            });
+        }
+
+
+        let parseResults = parser.parse(preprocessResults.processedTokens);
+        if (parseResults.errors.length > 0) {
+            return Promise.reject({
+                message: "Error occurred parsing"
+            });
+        }
+
+        return Promise.resolve(parseResults.statements);
+    }));
+
+    // don't execute anything if there were reading, lexing, or parsing errors
+    if (parsedFiles.some(file => file.isRejected)) {
+        return Promise.reject({
+            messages: parsedFiles.filter(file => file.isRejected).map(rejection => rejection.reason.message)
+        });
+    }
+
+    // combine statements from all files into one array
+    let statements = parsedFiles.map(file => file.value || []).reduce(
+        (allStatements, fileStatements) => [ ...allStatements, ...fileStatements ],
+        []
+    );
+
+    // execute them
+    const interpreter = new Interpreter(executionOptions);
+    interpreter.onError(logError);
+    return interpreter.exec(statements);
 }
 
 /**
@@ -65,6 +103,8 @@ export async function execute(filenames: string[], options: OutputStreams = proc
  */
 export function repl() {
     const replInterpreter = new Interpreter();
+    replInterpreter.onError(logError);
+
     const rl = readline.createInterface({
         input: process.stdin,
         output: process.stdout,
@@ -72,12 +112,11 @@ export function repl() {
     rl.setPrompt("brs> ");
 
     rl.on("line", (line) => {
-        let results = run(line, processOutput, replInterpreter);
+        let results = run(line, defaultExecutionOptions, replInterpreter);
         if (results) {
-            results.map(result => console.log(stringify(result)));
+            results.map(result => console.log(result.toString()));
         }
 
-        BrsError.reset();
         rl.prompt();
     });
 
@@ -95,20 +134,37 @@ export function repl() {
  *          statement exited and what its return value was, or `undefined` if
  *          `interpreter` threw an Error.
  */
-function run(contents: string, options: OutputStreams = processOutput, interpreter?: Interpreter) {
-    const tokens: ReadonlyArray<Token> = Lexer.scan(contents);
-    const statements = Parser.parse(tokens);
+function run(contents: string, options: ExecutionOptions = defaultExecutionOptions, interpreter: Interpreter) {
+    const lexer = new Lexer();
+    const parser = new Parser();
 
-    if (BrsError.found()) {
+    lexer.onError(logError);
+    parser.onError(logError);
+
+    const scanResults = lexer.scan(contents, "REPL");
+    if (scanResults.errors.length > 0) {
         return;
     }
 
-    if (!statements) { return; }
+    const parseResults = parser.parse(scanResults.tokens);
+    if (parseResults.errors.length > 0) {
+        return;
+    }
+
+    if (parseResults.statements.length === 0) { return; }
 
     try {
-        return (interpreter || new Interpreter(options)).exec(statements);
+        return interpreter.exec(parseResults.statements);
     } catch (e) {
         //options.stderr.write(e.message);
         return;
     }
+}
+
+/**
+ * Logs a detected BRS error to stderr.
+ * @param err the error to log to `stderr`
+ */
+function logError(err: BrsError.BrsError) {
+    console.error(err.format());
 }

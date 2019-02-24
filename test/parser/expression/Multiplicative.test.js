@@ -1,84 +1,87 @@
-const Parser = require("../../../lib/parser");
-const BrsError = require("../../../lib/Error");
-const { Lexeme, BrsTypes } = require("brs");
-const { Float } = BrsTypes;
+const brs = require("brs");
+const { Lexeme } = brs.lexer;
+const { Float } = brs.types;
 
-const { EOF } = require("../ParserTests");
+const { token, identifier, EOF } = require("../ParserTests");
 
 describe("parser", () => {
-    afterEach(() => BrsError.reset());
+    let parser;
+
+    beforeEach(() => {
+        parser = new brs.parser.Parser();
+    });
 
     describe("multiplicative expressions", () => {
         it("parses left-associative multiplication chains", () => {
-            let parsed = Parser.parse([
-                { kind: Lexeme.Identifier, text: "_", line: 1 },
-                { kind: Lexeme.Equal, text: "=", line: 1 },
-                { kind: Lexeme.Float, text: "3.0", literal: new Float(3.0), line: 1 },
-                { kind: Lexeme.Star, text: "*", line: 1 },
-                { kind: Lexeme.Float, text: "5.0", literal: new Float(5.0), line: 1 },
-                { kind: Lexeme.Star, text: "*", line: 1 },
-                { kind: Lexeme.Float, text: "7.0", literal: new Float(7.0), line: 1 },
+            let { statements, errors } = parser.parse([
+                identifier("_"),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.Float, "3.0", new Float(3.0)),
+                token(Lexeme.Star, "*"),
+                token(Lexeme.Float, "5.0", new Float(5.0)),
+                token(Lexeme.Star, "*"),
+                token(Lexeme.Float, "7.0", new Float(7.0)),
                 EOF
             ]);
 
-            expect(BrsError.found()).toBeFalsy();
-            expect(parsed).toBeDefined();
-            expect(parsed).not.toBeNull();
-            expect(parsed).toMatchSnapshot();
+            expect(errors).toEqual([]);
+            expect(statements).toBeDefined();
+            expect(statements).not.toBeNull();
+            expect(statements).toMatchSnapshot();
         });
 
         it("parses left-associative division chains", () => {
-            let parsed = Parser.parse([
-                { kind: Lexeme.Identifier, text: "_", line: 1 },
-                { kind: Lexeme.Equal, text: "=", line: 1 },
-                { kind: Lexeme.Float, text: "7.0", literal: new Float(7.0), line: 1 },
-                { kind: Lexeme.Slash, text: "/", line: 1 },
-                { kind: Lexeme.Float, text: "5.0", literal: new Float(5.0), line: 1 },
-                { kind: Lexeme.Slash, text: "/", line: 1 },
-                { kind: Lexeme.Float, text: "3.0", literal: new Float(3.0), line: 1 },
+            let { statements, errors } = parser.parse([
+                identifier("_"),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.Float, "7.0", new Float(7.0)),
+                token(Lexeme.Slash, "/"),
+                token(Lexeme.Float, "5.0", new Float(5.0)),
+                token(Lexeme.Slash, "/"),
+                token(Lexeme.Float, "3.0", new Float(3.0)),
                 EOF
             ]);
 
-            expect(BrsError.found()).toBeFalsy();
-            expect(parsed).toBeDefined();
-            expect(parsed).not.toBeNull();
-            expect(parsed).toMatchSnapshot();
+            expect(errors).toEqual([]);
+            expect(statements).toBeDefined();
+            expect(statements).not.toBeNull();
+            expect(statements).toMatchSnapshot();
         });
 
         it("parses left-associative modulo chains", () => {
-            let parsed = Parser.parse([
-                { kind: Lexeme.Identifier, text: "_", line: 1 },
-                { kind: Lexeme.Equal, text: "=", line: 1 },
-                { kind: Lexeme.Float, text: "7.0", literal: new Float(7.0), line: 1 },
-                { kind: Lexeme.Mod, text: "MOD", line: 1 },
-                { kind: Lexeme.Float, text: "5.0", literal: new Float(5.0), line: 1 },
-                { kind: Lexeme.Mod, text: "MOD", line: 1 },
-                { kind: Lexeme.Float, text: "3.0", literal: new Float(3.0), line: 1 },
+            let { statements, errors } = parser.parse([
+                identifier("_"),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.Float, "7.0", new Float(7.0)),
+                token(Lexeme.Mod, "MOD"),
+                token(Lexeme.Float, "5.0", new Float(5.0)),
+                token(Lexeme.Mod, "MOD"),
+                token(Lexeme.Float, "3.0", new Float(3.0)),
                 EOF
             ]);
 
-            expect(BrsError.found()).toBeFalsy();
-            expect(parsed).toBeDefined();
-            expect(parsed).not.toBeNull();
-            expect(parsed).toMatchSnapshot();
+            expect(errors).toEqual([]);
+            expect(statements).toBeDefined();
+            expect(statements).not.toBeNull();
+            expect(statements).toMatchSnapshot();
         });
 
         it("parses left-associative integer-division chains", () => {
-            let parsed = Parser.parse([
-                { kind: Lexeme.Identifier, text: "_", line: 1 },
-                { kind: Lexeme.Equal, text: "=", line: 1 },
-                { kind: Lexeme.Float, text: "32.5", literal: new Float(32.5), line: 1 },
-                { kind: Lexeme.Backslash, text: "\\", line: 1 },
-                { kind: Lexeme.Float, text: "5.0", literal: new Float(5.0), line: 1 },
-                { kind: Lexeme.Backslash, text: "\\", line: 1 },
-                { kind: Lexeme.Float, text: "3.0", literal: new Float(3.0), line: 1 },
+            let { statements, errors } = parser.parse([
+                identifier("_"),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.Float, "32.5", new Float(32.5)),
+                token(Lexeme.Backslash, "\\"),
+                token(Lexeme.Float, "5.0", new Float(5.0)),
+                token(Lexeme.Backslash, "\\"),
+                token(Lexeme.Float, "3.0", new Float(3.0)),
                 EOF
             ]);
 
-            expect(BrsError.found()).toBeFalsy();
-            expect(parsed).toBeDefined();
-            expect(parsed).not.toBeNull();
-            expect(parsed).toMatchSnapshot();
+            expect(errors).toEqual([]);
+            expect(statements).toBeDefined();
+            expect(statements).not.toBeNull();
+            expect(statements).toMatchSnapshot();
         });
     });
 });

@@ -20,6 +20,16 @@ export enum Lexeme {
     LeftShift, // <<
     RightShift, // >>
 
+    // assignment operators
+    CaretEqual,      // ^=
+    MinusEqual,      // -=
+    PlusEqual,       // +=
+    StarEqual,       // *=
+    SlashEqual,      // /=
+    BackslashEqual,  // \=
+    LeftShiftEqual,  // <<=
+    RightShiftEqual, // >>=
+
     // comparators
     Less,
     LessEqual,
@@ -41,6 +51,15 @@ export enum Lexeme {
     Comma,
     Colon,
     Semicolon,
+
+    // conditional compilation
+    HashIf,
+    HashElseIf,
+    HashElse,
+    HashEndIf,
+    HashConst,
+    HashError,
+    HashErrorMessage,
 
     // keywords
     // canonical source: https://sdkdocs.roku.com/display/sdkdoc/Reserved+Words
@@ -80,9 +99,7 @@ export enum Lexeme {
     Print,
     Rem,
     Return,
-    Run,
     Step,
-    Stop,
     Sub,
     Tab,
     Then,

@@ -9,12 +9,11 @@ export enum ValueKind {
     Int64,
     Float,
     Double,
-    Array,
-    AssociativeArray,
     Callable,
+    Uninitialized,
     Dynamic,
     Void,
-    Uninitialized
+    Object
 }
 
 export namespace ValueKind {
@@ -31,12 +30,11 @@ export namespace ValueKind {
             case ValueKind.Int64: return "LongInteger";
             case ValueKind.Float: return "Float";
             case ValueKind.Double: return "Double";
-            case ValueKind.Array: return "Array";
-            case ValueKind.AssociativeArray: return "AssociativeArray";
             case ValueKind.Callable: return "Function";
             case ValueKind.Dynamic: return "Dynamic";
             case ValueKind.Void: return "Void";
             case ValueKind.Uninitialized: return "<UNINITIALIZED>";
+            case ValueKind.Object: return "Object";
         }
     }
 
@@ -54,12 +52,11 @@ export namespace ValueKind {
             case "longinteger": return ValueKind.Int64;
             case "float": return ValueKind.Float;
             case "double": return ValueKind.Double;
-            case "array": return ValueKind.Array;
-            case "associativearray": return ValueKind.AssociativeArray;
             case "callable": return ValueKind.Callable;
             case "dynamic": return ValueKind.Dynamic;
             case "void": return ValueKind.Void;
             case "<uninitialized>": return ValueKind.Uninitialized;
+            case "object": return ValueKind.Object;
             default: return undefined;
         }
     }

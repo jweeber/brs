@@ -1,263 +1,270 @@
-const Parser = require("../../../lib/parser");
-const BrsError = require("../../../lib/Error");
-const { Lexeme, BrsTypes } = require("brs");
-const { BrsBoolean, Int32 } = BrsTypes;
+const brs = require("brs");
+const { Lexeme } = brs.lexer;
+const { BrsBoolean, Int32 } = brs.types;
 
 const { token, identifier, EOF } = require("../ParserTests");
 
 describe("parser if statements", () => {
-    afterEach(() => BrsError.reset());
+    let parser;
+
+    beforeEach(() => {
+        parser = new brs.parser.Parser();
+    });
 
     describe("single-line if", () => {
         it("parses if only", () => {
-            let parsed = Parser.parse([
-                token(Lexeme.If),
-                token(Lexeme.Integer, new Int32(1)),
-                token(Lexeme.Less),
-                token(Lexeme.Integer, new Int32(2)),
-                token(Lexeme.Then),
+            let { statements, errors } = parser.parse([
+                token(Lexeme.If, "if"),
+                token(Lexeme.Integer, "1", new Int32(1)),
+                token(Lexeme.Less, "<"),
+                token(Lexeme.Integer, "2", new Int32(2)),
+                token(Lexeme.Then, "then"),
                 identifier("foo"),
-                token(Lexeme.Equal),
-                token(Lexeme.True, BrsBoolean.True),
-                token(Lexeme.Newline),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.True, "true", BrsBoolean.True),
+                token(Lexeme.Newline, "\n"),
                 EOF
             ]);
 
 
-            expect(BrsError.found()).toBe(false);
-            expect(parsed).toBeDefined();
-            expect(parsed).not.toBeNull();
-            expect(parsed).toMatchSnapshot();
+            expect(errors).toEqual([])
+            expect(statements).toBeDefined();
+            expect(statements).not.toBeNull();
+            expect(statements).toMatchSnapshot();
         });
 
         it("parses if-else", () => {
-            let parsed = Parser.parse([
-                token(Lexeme.If),
-                token(Lexeme.Integer, new Int32(1)),
-                token(Lexeme.Less),
-                token(Lexeme.Integer, new Int32(2)),
-                token(Lexeme.Then),
+            let { statements, errors } = parser.parse([
+                token(Lexeme.If, "if"),
+                token(Lexeme.Integer, "1", new Int32(1)),
+                token(Lexeme.Less, "<"),
+                token(Lexeme.Integer, "2", new Int32(2)),
+                token(Lexeme.Then, "then"),
                 identifier("foo"),
-                token(Lexeme.Equal),
-                token(Lexeme.True, BrsBoolean.True),
-                token(Lexeme.Else),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.True, "true", BrsBoolean.True),
+                token(Lexeme.Else, "else"),
                 identifier("foo"),
-                token(Lexeme.Equal),
-                token(Lexeme.True, BrsBoolean.False),
-                token(Lexeme.Newline),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.False, "true", BrsBoolean.False),
+                token(Lexeme.Newline, "\n"),
                 EOF
             ]);
 
-            expect(BrsError.found()).toBe(false);
-            expect(parsed).toBeDefined();
-            expect(parsed).not.toBeNull();
-            expect(parsed).toMatchSnapshot();
+            expect(errors).toEqual([])
+            expect(statements).toBeDefined();
+            expect(statements).not.toBeNull();
+            expect(statements).toMatchSnapshot();
         });
 
         it("parses if-elseif-else", () => {
-            let parsed = Parser.parse([
-                token(Lexeme.If),
-                token(Lexeme.Integer, new Int32(1)),
-                token(Lexeme.Less),
-                token(Lexeme.Integer, new Int32(2)),
-                token(Lexeme.Then),
+            let { statements, errors } = parser.parse([
+                token(Lexeme.If, "if"),
+                token(Lexeme.Integer, "1", new Int32(1)),
+                token(Lexeme.Less, "<"),
+                token(Lexeme.Integer, "2", new Int32(2)),
+                token(Lexeme.Then, "then"),
                 identifier("foo"),
-                token(Lexeme.Equal),
-                token(Lexeme.True, BrsBoolean.True),
-                token(Lexeme.ElseIf),
-                token(Lexeme.Integer, new Int32(1)),
-                token(Lexeme.Equal),
-                token(Lexeme.Integer, new Int32(2)),
-                token(Lexeme.Then),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.True, "true", BrsBoolean.True),
+                token(Lexeme.ElseIf, "else if"),
+                token(Lexeme.Integer, "1", new Int32(1)),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.Integer, "2", new Int32(2)),
+                token(Lexeme.Then, "then"),
                 identifier("same"),
-                token(Lexeme.Equal),
-                token(Lexeme.True, BrsBoolean.True),
-                token(Lexeme.Else),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.True, "true", BrsBoolean.True),
+                token(Lexeme.Else, "else"),
                 identifier("foo"),
-                token(Lexeme.Equal),
-                token(Lexeme.True, BrsBoolean.False),
-                token(Lexeme.Newline),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.True, "true", BrsBoolean.False),
+                token(Lexeme.Newline, "\n"),
                 EOF
             ]);
 
-            expect(BrsError.found()).toBe(false);
-            expect(parsed).toBeDefined();
-            expect(parsed).not.toBeNull();
-            expect(parsed).toMatchSnapshot();
+            expect(errors).toEqual([])
+            expect(statements).toBeDefined();
+            expect(statements).not.toBeNull();
+            expect(statements).toMatchSnapshot();
         });
 
         it("allows 'then' to be skipped", () => {
-            let parsed = Parser.parse([
-                token(Lexeme.If),
-                token(Lexeme.Integer, new Int32(1)),
-                token(Lexeme.Less),
-                token(Lexeme.Integer, new Int32(2)),
+            let { statements, errors } = parser.parse([
+                token(Lexeme.If, "if"),
+                token(Lexeme.Integer, "1", new Int32(1)),
+                token(Lexeme.Less, "<"),
+                token(Lexeme.Integer, "2", new Int32(2)),
                 identifier("foo"),
-                token(Lexeme.Equal),
-                token(Lexeme.True, BrsBoolean.True),
-                token(Lexeme.ElseIf),
-                token(Lexeme.Integer, new Int32(1)),
-                token(Lexeme.Equal),
-                token(Lexeme.Integer, new Int32(2)),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.True, "true", BrsBoolean.True),
+                token(Lexeme.ElseIf, "else if"),
+                token(Lexeme.Integer, "1", new Int32(1)),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.Integer, "2", new Int32(2)),
                 identifier("same"),
-                token(Lexeme.Equal),
-                token(Lexeme.True, BrsBoolean.True),
-                token(Lexeme.Else),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.True, "true", BrsBoolean.True),
+                token(Lexeme.Else, "else"),
                 identifier("foo"),
-                token(Lexeme.Equal),
-                token(Lexeme.True, BrsBoolean.False),
-                token(Lexeme.Newline),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.False, "false", BrsBoolean.False),
+                token(Lexeme.Newline, "\n"),
                 EOF
             ]);
 
-            expect(BrsError.found()).toBe(false);
-            expect(parsed).toBeDefined();
-            expect(parsed).not.toBeNull();
-            expect(parsed).toMatchSnapshot();
+            expect(errors).toEqual([])
+            expect(statements).toBeDefined();
+            expect(statements).not.toBeNull();
+            expect(statements).toMatchSnapshot();
         });
     });
 
     describe("block if", () => {
         it("parses if only", () => {
-            let parsed = Parser.parse([
-                { kind: Lexeme.If, text: "if" },
-                { kind: Lexeme.Integer, literal: new Int32(1) },
-                { kind: Lexeme.Less, text: "<" },
-                { kind: Lexeme.Integer, literal: new Int32(2) },
-                { kind: Lexeme.Then, text: "then" },
-                { kind: Lexeme.Newline, text: "\n" },
-                { kind: Lexeme.Identifier, text: "foo" },
-                { kind: Lexeme.Equal, text: "=" },
-                { kind: Lexeme.True, literal: BrsBoolean.True },
-                { kind: Lexeme.Newline, text: "\n" },
-                { kind: Lexeme.Identifier, text: "bar" },
-                { kind: Lexeme.Equal, text: "=" },
-                { kind: Lexeme.True, literal: BrsBoolean.True },
-                { kind: Lexeme.Newline, text: "\n" },
-                { kind: Lexeme.EndIf, text: "end if" },
+            let { statements, errors } = parser.parse([
+                token(Lexeme.If, "if"),
+                token(Lexeme.Integer, "1", new Int32(1)),
+                token(Lexeme.Less, "<"),
+                token(Lexeme.Integer, "2", new Int32(2)),
+                token(Lexeme.Then, "then"),
+                token(Lexeme.Newline, "\n"),
+                identifier("foo"),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.True, "true", BrsBoolean.True),
+                token(Lexeme.Newline, "\n"),
+                identifier("bar"),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.True, "true", BrsBoolean.True),
+                token(Lexeme.Newline, "\n"),
+                token(Lexeme.EndIf, "end if"),
                 EOF
             ]);
 
-            expect(BrsError.found()).toBe(false);
-            expect(parsed).toBeDefined();
-            expect(parsed).not.toBeNull();
-            expect(parsed).toMatchSnapshot();
+            expect(errors).toEqual([])
+            expect(statements).toBeDefined();
+            expect(statements).not.toBeNull();
+            expect(statements).toMatchSnapshot();
         });
 
         it("parses if-else", () => {
-            let parsed = Parser.parse([
-                { kind: Lexeme.If, text: "if" },
-                { kind: Lexeme.Integer, literal: new Int32(1) },
-                { kind: Lexeme.Less, text: "<" },
-                { kind: Lexeme.Integer, literal: new Int32(2) },
-                { kind: Lexeme.Then, text: "then" },
-                { kind: Lexeme.Newline, text: "\n" },
-                { kind: Lexeme.Identifier, text: "foo" },
-                { kind: Lexeme.Equal, text: "=" },
-                { kind: Lexeme.True, literal: BrsBoolean.True },
-                { kind: Lexeme.Newline, text: "\n" },
-                { kind: Lexeme.Else, text: "else" },
-                { kind: Lexeme.Newline, text: "\n" },
-                { kind: Lexeme.Identifier, text: "foo" },
-                { kind: Lexeme.Equal, text: "=" },
-                { kind: Lexeme.False, literal: BrsBoolean.False },
-                { kind: Lexeme.Newline, text: "\n" },
-                { kind: Lexeme.Identifier, text: "bar" },
-                { kind: Lexeme.Equal, text: "=" },
-                { kind: Lexeme.True, literal: BrsBoolean.False },
-                { kind: Lexeme.Newline, text: "\n" },
-                { kind: Lexeme.EndIf, text: "end if" },
+            let { statements, errors } = parser.parse([
+                token(Lexeme.If, "if"),
+                token(Lexeme.Integer, "1", new Int32(1)),
+                token(Lexeme.Less, "<"),
+                token(Lexeme.Integer, "2", new Int32(2)),
+                token(Lexeme.Then, "then"),
+                token(Lexeme.Newline, "\n"),
+                identifier("foo"),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.True, "true", BrsBoolean.True),
+                token(Lexeme.Newline, "\n"),
+                token(Lexeme.Else, "else"),
+                token(Lexeme.Newline, "\n"),
+                identifier("foo"),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.False, "false", BrsBoolean.False),
+                token(Lexeme.Newline, "\n"),
+                identifier("bar"),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.True, "false", BrsBoolean.False),
+                token(Lexeme.Newline, "\n"),
+                token(Lexeme.EndIf, "end if"),
                 EOF
             ]);
 
-            expect(BrsError.found()).toBe(false);
-            expect(parsed).toBeDefined();
-            expect(parsed).not.toBeNull();
-            expect(parsed).toMatchSnapshot();
+            expect(errors).toEqual([])
+            expect(statements).toBeDefined();
+            expect(statements).not.toBeNull();
+            expect(statements).toMatchSnapshot();
         });
 
         it("parses if-elseif-else", () => {
-            let parsed = Parser.parse([
-                { kind: Lexeme.If, text: "if" },
-                { kind: Lexeme.Integer, literal: new Int32(1) },
-                { kind: Lexeme.Less, text: "<" },
-                { kind: Lexeme.Integer, literal: new Int32(2) },
-                { kind: Lexeme.Then, text: "then" },
-                { kind: Lexeme.Newline, text: "\n" },
-                { kind: Lexeme.Identifier, text: "foo" },
-                { kind: Lexeme.Equal, text: "=" },
-                { kind: Lexeme.True, literal: BrsBoolean.True },
-                { kind: Lexeme.Newline, text: "\n" },
-                { kind: Lexeme.ElseIf, text: "else if" },
-                { kind: Lexeme.Integer, literal: new Int32(1) },
-                { kind: Lexeme.Greater, text: ">" },
-                { kind: Lexeme.Integer, literal: new Int32(2) },
-                { kind: Lexeme.Then, text: "then" },
-                { kind: Lexeme.Newline, text: "\n" },
-                { kind: Lexeme.Identifier, text: "foo" },
-                { kind: Lexeme.Equal, text: "=" },
-                { kind: Lexeme.Integer, literal: new Int32(3) },
-                { kind: Lexeme.Newline, text: "\n" },
-                { kind: Lexeme.Identifier, text: "bar" },
-                { kind: Lexeme.Equal, text: "=" },
-                { kind: Lexeme.True, literal: BrsBoolean.False },
-                { kind: Lexeme.Newline, text: "\n" },
-                { kind: Lexeme.Else, text: "else" },
-                { kind: Lexeme.Newline, text: "\n" },
-                { kind: Lexeme.Identifier, text: "foo" },
-                { kind: Lexeme.Equal, text: "=" },
-                { kind: Lexeme.False, literal: BrsBoolean.False },
-                { kind: Lexeme.Newline, text: "\n" },
-                { kind: Lexeme.EndIf, text: "end if" },
-                { kind: Lexeme.Newline, text: "\n" },
+            let { statements, errors } = parser.parse([
+                token(Lexeme.If, "if"),
+                token(Lexeme.Integer, "1", new Int32(1)),
+                token(Lexeme.Less, "<"),
+                token(Lexeme.Integer, "2", new Int32(2)),
+                token(Lexeme.Then, "then"),
+                token(Lexeme.Newline, "\n"),
+                identifier("foo"),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.True, "true", BrsBoolean.True),
+                token(Lexeme.Newline, "\n"),
+                token(Lexeme.ElseIf, "else if"),
+                token(Lexeme.Integer, "1", new Int32(1)),
+                token(Lexeme.Greater, ">"),
+                token(Lexeme.Integer, "2", new Int32(2)),
+                token(Lexeme.Then, "then"),
+                token(Lexeme.Newline, "\n"),
+                identifier("foo"),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.Integer, "3", new Int32(3)),
+                token(Lexeme.Newline, "\n"),
+                identifier("bar"),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.True, "true", BrsBoolean.True),
+                token(Lexeme.Newline, "\n"),
+                token(Lexeme.Else, "else"),
+                token(Lexeme.Newline, "\n"),
+                identifier("foo"),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.False, "false", BrsBoolean.False),
+                token(Lexeme.Newline, "\n"),
+                token(Lexeme.EndIf, "end if"),
+                token(Lexeme.Newline, "\n"),
                 EOF
             ]);
 
-            expect(BrsError.found()).toBe(false);
-            expect(parsed).toBeDefined();
-            expect(parsed).not.toBeNull();
-            expect(parsed).toMatchSnapshot();
+            expect(errors).toEqual([])
+            expect(statements).toBeDefined();
+            expect(statements).not.toBeNull();
+            expect(statements).toMatchSnapshot();
         });
 
         it("allows 'then' to be skipped", () => {
-            let parsed = Parser.parse([
-                { kind: Lexeme.If, text: "if" },
-                { kind: Lexeme.Integer, literal: new Int32(1) },
-                { kind: Lexeme.Less, text: "<" },
-                { kind: Lexeme.Integer, literal: new Int32(2) },
-                { kind: Lexeme.Newline, text: "\n" },
-                { kind: Lexeme.Identifier, text: "foo" },
-                { kind: Lexeme.Equal, text: "=" },
-                { kind: Lexeme.True, literal: BrsBoolean.True },
-                { kind: Lexeme.Newline, text: "\n" },
-                { kind: Lexeme.ElseIf, text: "else if" },
-                { kind: Lexeme.Integer, literal: new Int32(1) },
-                { kind: Lexeme.Greater, text: ">" },
-                { kind: Lexeme.Integer, literal: new Int32(2) },
-                { kind: Lexeme.Newline, text: "\n" },
-                { kind: Lexeme.Identifier, text: "foo" },
-                { kind: Lexeme.Equal, text: "=" },
-                { kind: Lexeme.Integer, literal: new Int32(3) },
-                { kind: Lexeme.Newline, text: "\n" },
-                { kind: Lexeme.Identifier, text: "bar" },
-                { kind: Lexeme.Equal, text: "=" },
-                { kind: Lexeme.True, literal: BrsBoolean.False },
-                { kind: Lexeme.Newline, text: "\n" },
-                { kind: Lexeme.Else, text: "else" },
-                { kind: Lexeme.Newline, text: "\n" },
-                { kind: Lexeme.Identifier, text: "foo" },
-                { kind: Lexeme.Equal, text: "=" },
-                { kind: Lexeme.False, literal: BrsBoolean.False },
-                { kind: Lexeme.Newline, text: "\n" },
-                { kind: Lexeme.EndIf, text: "end if" },
-                { kind: Lexeme.Newline, text: "\n" },
+            let { statements, errors } = parser.parse([
+                token(Lexeme.If, "if"),
+                token(Lexeme.Integer, "1", new Int32(1)),
+                token(Lexeme.Less, "<"),
+                token(Lexeme.Integer, "2", new Int32(2)),
+                token(Lexeme.Newline, "\n"),
+                identifier("foo"),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.True, "true", BrsBoolean.True),
+                token(Lexeme.Newline, "\n"),
+                token(Lexeme.ElseIf, "else if"),
+                token(Lexeme.Integer, "1", new Int32(1)),
+                token(Lexeme.Greater, ">"),
+                token(Lexeme.Integer, "2", new Int32(2)),
+                token(Lexeme.Newline, "\n"),
+                identifier("foo"),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.Integer, "3", new Int32(3)),
+                token(Lexeme.Newline, "\n"),
+                identifier("bar"),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.True, "true", BrsBoolean.True),
+                token(Lexeme.Newline, "\n"),
+                token(Lexeme.Else, "else"),
+                token(Lexeme.Newline, "\n"),
+                identifier("foo"),
+                token(Lexeme.Equal, "="),
+                token(Lexeme.False, "false", BrsBoolean.False),
+                token(Lexeme.Newline, "\n"),
+                token(Lexeme.EndIf, "end if"),
+                token(Lexeme.Newline, "\n"),
                 EOF
             ]);
 
-            expect(BrsError.found()).toBe(false);
-            expect(parsed).toBeDefined();
-            expect(parsed).not.toBeNull();
-            expect(parsed).toMatchSnapshot();
+            expect(errors).toEqual([])
+            expect(statements).toBeDefined();
+            expect(statements).not.toBeNull();
+            expect(statements).toMatchSnapshot();
         });
     });
+
+    // TODO: Improve `if` statement structure to allow a linter to require a `uthenu` keyword for
+    // all `if` statements, then test location tracking
+    test.todo("location tracking");
 });

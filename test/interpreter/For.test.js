@@ -1,20 +1,22 @@
-const BrsError = require("../../lib/Error");
 const Expr = require("../../lib/parser/Expression");
 const Stmt = require("../../lib/parser/Statement");
 const { Interpreter } = require("../../lib/interpreter");
-const { Lexeme, BrsTypes } = require("brs");
-const { Int32 } = BrsTypes;
+const brs = require("brs");
+const { Lexeme } = brs.lexer;
+const { Int32 } = brs.types;
+
+const { token, identifier } = require("../parser/ParserTests");
 
 let interpreter;
 
 describe("interpreter for loops", () => {
     const initializeCounter = new Stmt.Assignment(
-        { kind: Lexeme.Identifier, text: "i", line: 1 },
+        { equals: token(Lexeme.Equals, "=") },
+        identifier("i"),
         new Expr.Literal(new Int32(0))
     );
 
     beforeEach(() => {
-        BrsError.reset();
         interpreter = new Interpreter();
     });
 
@@ -28,6 +30,11 @@ describe("interpreter for loops", () => {
 
         const statements = [
             new Stmt.For(
+                {
+                    for: token(Lexeme.For, "for"),
+                    to: token(Lexeme.To, "to"),
+                    endFor: token(Lexeme.EndFor, "end for")
+                },
                 initializeCounter,
                 /* final value */ new Expr.Literal(new Int32(5)),
                 /* step */ new Expr.Literal(new Int32(1)),
@@ -45,6 +52,11 @@ describe("interpreter for loops", () => {
 
         const statements = [
             new Stmt.For(
+                {
+                    for: token(Lexeme.For, "for"),
+                    to: token(Lexeme.To, "to"),
+                    endFor: token(Lexeme.EndFor, "end for")
+                },
                 initializeCounter,
                 finalValue,
                 /* step */ new Expr.Literal(new Int32(1)),
@@ -62,6 +74,11 @@ describe("interpreter for loops", () => {
 
         const statements = [
             new Stmt.For(
+                {
+                    for: token(Lexeme.For, "for"),
+                    to: token(Lexeme.To, "to"),
+                    endFor: token(Lexeme.EndFor, "end for")
+                },
                 initializeCounter,
                 new Expr.Literal(new Int32(5)),
                 /* step */ stepValue,
@@ -79,6 +96,11 @@ describe("interpreter for loops", () => {
 
         const statements = [
             new Stmt.For(
+                {
+                    for: token(Lexeme.For, "for"),
+                    to: token(Lexeme.To, "to"),
+                    endFor: token(Lexeme.EndFor, "end for")
+                },
                 initializeCounter,
                 new Expr.Literal(new Int32(5)),
                 new Expr.Literal(new Int32(1)),
@@ -94,6 +116,11 @@ describe("interpreter for loops", () => {
     it("leaves counter in-scope after loop", () => {
         const statements = [
             new Stmt.For(
+                {
+                    for: token(Lexeme.For, "for"),
+                    to: token(Lexeme.To, "to"),
+                    endFor: token(Lexeme.EndFor, "end for")
+                },
                 initializeCounter,
                 /* finalValue */ new Expr.Literal(new Int32(5)),
                 /* step */ new Expr.Literal(new Int32(1)),
@@ -101,7 +128,7 @@ describe("interpreter for loops", () => {
             ),
             new Stmt.Expression(
                 new Expr.Variable(
-                    { kind: Lexeme.Identifier, text: "i", line: 3 }
+                    identifier("i")
                 )
             )
         ];
@@ -119,6 +146,11 @@ describe("interpreter for loops", () => {
 
         const statements = [
             new Stmt.For(
+                {
+                    for: token(Lexeme.For, "for"),
+                    to: token(Lexeme.To, "to"),
+                    endFor: token(Lexeme.EndFor, "end for")
+                },
                 initializeCounter,
                 /* finalValue */ new Expr.Literal(new Int32(5)),
                 /* step */ new Expr.Literal(new Int32(1)),

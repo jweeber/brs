@@ -1,3 +1,5 @@
+import { EventEmitter } from "events";
+
 import {
     BrsType,
     ValueKind,
@@ -14,134 +16,169 @@ import {
     isIterable,
     SignatureAndMismatches,
     MismatchReason,
-    isComparable
+    Callable,
 } from "../brsTypes";
 
-import * as Expr from "../parser/Expression";
-import * as Stmt from "../parser/Statement";
 import { Lexeme } from "../lexer";
-import { stringify } from "../Stringify";
-import * as BrsError from "../Error";
+import { isToken } from "../lexer/Token";
+import { Expr, Stmt } from "../parser";
+import { BrsError, TypeMismatch } from "../Error";
 
 import * as StdLib from "../stdlib";
 
 import { Scope, Environment, NotFound } from "./Environment";
 import { OutputProxy } from "./OutputProxy";
 import { toCallable } from "./BrsFunction";
-import { BlockEnd, StopReason } from "../parser/Statement";
+import { BlockEnd, StopReason, Runtime, Expression } from "../parser/Statement";
 import { AssociativeArray } from "../brsTypes/components/AssociativeArray";
-import { Volume } from "memfs/lib/volume";
+import MemoryFileSystem from "memory-fs";
+import { BrsComponent } from "../brsTypes/components/BrsComponent";
 
-export interface OutputStreams {
+/** The set of options used to configure an interpreter's execution. */
+export interface ExecutionOptions {
+    /** The base path for  */
+    root: string,
     stdout: NodeJS.WriteStream,
     stderr: NodeJS.WriteStream
 }
 
+/** The default set of execution options.  Includes the `stdout`/`stderr` pair from the process that invoked `brs`. */
+export const defaultExecutionOptions: ExecutionOptions = {
+    root: process.cwd(),
+    stdout: process.stdout,
+    stderr: process.stderr
+};
+
 export class Interpreter implements Expr.Visitor<BrsType>, Stmt.Visitor<BrsType> {
     private _environment = new Environment();
-    
+
     readonly stdout: OutputProxy;
     readonly stderr: OutputProxy;
-    readonly temporaryVolume = new Volume();
+    readonly temporaryVolume: MemoryFileSystem = new MemoryFileSystem();
+
+    /** Allows consumers to observe errors as they're detected. */
+    readonly events = new EventEmitter();
+
+    /** The set of errors detected from executing an AST. */
+    errors: (BrsError | Runtime)[] = [];
 
     get environment() {
         return this._environment;
     }
 
     /**
+     * Convenience function to subscribe to the `err` events emitted by `interpreter.events`.
+     * @param errorHandler the function to call for every runtime error emitted after subscribing
+     * @returns an object with a `dispose` function, used to unsubscribe from errors
+     */
+    public onError(errorHandler: (err: BrsError | Runtime) => void) {
+        this.events.on("err", errorHandler);
+        return {
+            dispose: () => {
+                this.events.removeListener("err", errorHandler);
+            }
+        };
+    }
+
+    /**
+     * Convenience function to subscribe to a single `err` event emitted by `interpreter.events`.
+     * @param errorHandler the function to call for the first runtime error emitted after subscribing
+     */
+    public onErrorOnce(errorHandler: (err: BrsError | Runtime) => void) {
+        this.events.once("err", errorHandler);
+    }
+
+    /**
      * Creates a new Interpreter, including any global properties and functions.
      * @param outputStreams the WriteStreams to use for `stdout` and `stderr`.
      */
-    constructor(outputStreams: OutputStreams = process) {
+    constructor(outputStreams: ExecutionOptions = defaultExecutionOptions) {
         this.stdout = new OutputProxy(outputStreams.stdout);
         this.stderr = new OutputProxy(outputStreams.stderr);
 
-        [
-            { name: "RebootSystem", func: StdLib.RebootSystem },
-            { name: "UCase",        func: StdLib.UCase },
-            { name: "LCase",        func: StdLib.LCase },
-            { name: "Asc",          func: StdLib.Asc },
-            { name: "Chr",          func: StdLib.Chr },
-            { name: "Pos",          func: StdLib.Pos },
-            { name: "Left",         func: StdLib.Left },
-            { name: "Right",        func: StdLib.Right },
-            { name: "Instr",        func: StdLib.Instr },
-            { name: "Len",          func: StdLib.Len },
-            { name: "Mid",          func: StdLib.Mid },
-            { name: "RebootSystem", func: StdLib.RebootSystem },
-            { name: "UCase",        func: StdLib.UCase },
-            { name: "LCase",        func: StdLib.LCase },
-            { name: "Asc",          func: StdLib.Asc },
-            { name: "Chr",          func: StdLib.Chr },
-            { name: "Pos",          func: StdLib.Pos },
-            { name: "Left",         func: StdLib.Left },
-            { name: "Right",        func: StdLib.Right },
-            { name: "Instr",        func: StdLib.Instr },
-            { name: "Len",          func: StdLib.Len },
-            { name: "Mid",          func: StdLib.Mid },
-            { name: "Str",          func: StdLib.Str },
-            { name: "StrI",         func: StdLib.StrI },
-            { name: "Substitute",   func: StdLib.Substitute },
-            { name: "Val",          func: StdLib.Val },
-            { name: "Exp",          func: StdLib.Exp },
-            { name: "Log",          func: StdLib.Log },
-            { name: "Sqr",          func: StdLib.Sqr },
-            { name: "Rnd",          func: StdLib.Rnd },
-            { name: "Atn",          func: StdLib.Atn },
-            { name: "Cos",          func: StdLib.Cos },
-            { name: "Sin",          func: StdLib.Sin },
-            { name: "Tan",          func: StdLib.Tan },
-            { name: "Abs",          func: StdLib.Abs },
-            { name: "Cdbl",         func: StdLib.Cdbl },
-            { name: "Cint",         func: StdLib.Cint },
-            { name: "Csng",         func: StdLib.Csng },
-            { name: "Fix",          func: StdLib.Fix },
-            { name: "Int",          func: StdLib.Int },
-            { name: "Sgn",          func: StdLib.Sgn },
-            { name: "ReadAsciiFile", func: StdLib.ReadAsciiFile },
-            { name: "WriteAsciiFile", func: StdLib.WriteAsciiFile },
-            { name: "StrToI",       func: StdLib.StrToI }
-        ].forEach(({name, func}) =>
-            this._environment.define(Scope.Global, name, func)
-        );
+        Object.keys(StdLib)
+            .map(name => (StdLib as any)[name])
+            .filter(func => func instanceof Callable)
+            .filter((func: Callable) => {
+                if (!func.name) {
+                    throw new Error("Unnamed standard library function detected!");
+                }
+
+                return !!func.name;
+            })
+            .forEach((func: Callable) =>
+                this._environment.define(Scope.Global, func.name || "", func)
+            );
     }
 
     /**
      * Temporarily sets an interpreter's environment to the provided one, then
      * passes the sub-interpreter to the provided JavaScript function. Always
      * reverts the current interpreter's environment to its original value.
-     * @param environment the sub-environment to use for the interpreter
-     *                    provided to `func`.
      * @param func the JavaScript function to execute with the sub interpreter.
      */
-    inSubEnv(environment: Environment, func: (interpreter: Interpreter) => BrsType): BrsType {
+    inSubEnv(func: (interpreter: Interpreter) => BrsType): BrsType {
         let originalEnvironment = this._environment;
+        let newEnv = this._environment.createSubEnvironment();
         try {
-            this._environment = environment;
+            this._environment = newEnv;
             return func(this);
+        } catch (err) {
+            if (err.kind == null) {
+                console.error("Runtime error encountered in BRS implementation: ", err);
+            }
+            throw err;
         } finally {
             this._environment = originalEnvironment;
         }
     }
 
     exec(statements: ReadonlyArray<Stmt.Statement>) {
-        return statements.map((statement) => this.execute(statement));
-    }
-
-    visitAssign(statement: Expr.Assign): BrsType {
-        return BrsInvalid.Instance;
+        let results = statements.map((statement) => this.execute(statement));
+        try {
+            let maybeMain = this._environment.get({
+                kind: Lexeme.Identifier,
+                text: "main",
+                isReserved: false,
+                location: {
+                    start: {
+                        line: -1,
+                        column: -1
+                    },
+                    end: {
+                        line: -1,
+                        column: -1
+                    },
+                    file: "(internal)"
+                }
+            });
+            if (maybeMain.kind === ValueKind.Callable) {
+                results = [ maybeMain.call(this) ];
+            }
+        } catch (err) {
+            throw err;
+        } finally {
+            return results;
+        }
     }
 
     visitNamedFunction(statement: Stmt.Function): BrsType {
-        if (this.environment.has(statement.name)) {
+        if (statement.name.isReserved) {
+            return this.addError(
+                new BrsError(`Cannot create a named function with reserved name '${statement.name.text}'`, statement.name.location)
+            );
+        }
+
+        if (this.environment.has(statement.name, [Scope.Module])) {
             // TODO: Figure out how to determine where the original version was declared
             // Maybe `Environment.define` records the location along with the value?
-            BrsError.make(
-                `Attempting to declare function '${statement.name.text}', but ` +
-                `a property of that name already exists.`,
-                statement.name.line
+            return this.addError(
+                new BrsError(
+                    `Attempting to declare function '${statement.name.text}', but ` +
+                    `a property of that name already exists in this scope.`,
+                    statement.name.location
+                )
             );
-            return BrsInvalid.Instance;
         }
 
         this.environment.define(Scope.Module, statement.name.text!, toCallable(statement.func, statement.name.text));
@@ -150,11 +187,11 @@ export class Interpreter implements Expr.Visitor<BrsType>, Stmt.Visitor<BrsType>
 
     visitReturn(statement: Stmt.Return): never {
         if (!statement.value) {
-            throw new Stmt.ReturnValue(statement.keyword, BrsInvalid.Instance);
+            throw new Stmt.ReturnValue(statement.tokens.return);
         }
 
         let toReturn = this.evaluate(statement.value);
-        throw new Stmt.ReturnValue(statement.keyword, toReturn);
+        throw new Stmt.ReturnValue(statement.tokens.return, toReturn);
     }
 
     visitExpression(statement: Stmt.Expression): BrsType {
@@ -166,32 +203,39 @@ export class Interpreter implements Expr.Visitor<BrsType>, Stmt.Visitor<BrsType>
         this.environment.define(Scope.Function, "Tab", StdLib.Tab);
 
         statement.expressions.forEach( (printable, index) => {
-            switch (printable) {
-                case Stmt.PrintSeparator.Tab:
-                    this.stdout.write(
-                        " ".repeat(16 - (this.stdout.position() % 16))
-                    );
-                    break;
-                case Stmt.PrintSeparator.Space:
-                    if (index === statement.expressions.length - 1) {
-                        // Don't write an extra space for trailing `;` in print lists.
-                        // They're used to suppress trailing newlines in `print` statements
+            if (isToken(printable)) {
+                switch (printable.kind) {
+                    case Lexeme.Comma:
+                        this.stdout.write(
+                            " ".repeat(16 - (this.stdout.position() % 16))
+                        );
                         break;
-                    }
+                    case Lexeme.Semicolon:
+                        if (index === statement.expressions.length - 1) {
+                            // Don't write an extra space for trailing `;` in print lists.
+                            // They're used to suppress trailing newlines in `print` statements
+                            break;
+                        }
 
-                    this.stdout.write(" ");
-                    break;
-                default:
-                    this.stdout.write(
-                        stringify(
-                            this.evaluate(printable)
-                        )
-                    );
-                    break;
+                        this.stdout.write(" ");
+                        break;
+                    default:
+                        this.addError(
+                            new BrsError(
+                                `Found unexpected print separator '${printable.text}'`,
+                                printable.location
+                            )
+                        );
+                }
+            } else {
+                this.stdout.write(
+                    this.evaluate(printable).toString()
+                );
             }
         });
 
-        if (statement.expressions[statement.expressions.length - 1] !== Stmt.PrintSeparator.Space) {
+        let lastExpression = statement.expressions[statement.expressions.length - 1];
+        if (!isToken(lastExpression) || lastExpression.kind !== Lexeme.Semicolon) {
             this.stdout.write("\n");
         }
 
@@ -202,6 +246,12 @@ export class Interpreter implements Expr.Visitor<BrsType>, Stmt.Visitor<BrsType>
     }
 
     visitAssignment(statement: Stmt.Assignment): BrsType {
+        if (statement.name.isReserved) {
+            return this.addError(
+                new BrsError(`Cannot assign a value to reserved name '${statement.name}'`, statement.name.location)
+            );
+        }
+
         let value = this.evaluate(statement.value);
         this.environment.define(Scope.Function, statement.name.text!, value);
         return BrsInvalid.Instance;
@@ -219,161 +269,264 @@ export class Interpreter implements Expr.Visitor<BrsType>, Stmt.Visitor<BrsType>
             right = this.evaluate(expression.right);
         }
 
+        /**
+         * Determines whether or not the provided pair of values are allowed to be compared to each other.
+         * @param left the left-hand side of a comparison operator
+         * @param operator the operator to use when comparing `left` and `right`
+         * @param right the right-hand side of a comparison operator
+         * @returns `true` if `left` and `right` are allowed to be compared to each other with `operator`,
+         *          otherwise `false`.
+         */
+        function canCompare(left: BrsType, operator: Lexeme, right: BrsType ): boolean {
+            if (left.kind === ValueKind.Invalid || right.kind === ValueKind.Invalid) {
+                // anything can be checked for *equality* with `invalid`, but greater than / less than comparisons
+                // are type mismatches
+                return operator === Lexeme.Equal || operator=== Lexeme.LessGreater;
+            }
+
+            // and only primitive non-invalid values can be compared to each other (i.e. no `foo <> []`)
+            return left.kind < ValueKind.Dynamic && right.kind < ValueKind.Dynamic;
+        }
+
         switch (lexeme) {
             case Lexeme.Minus:
+            case Lexeme.MinusEqual:
                 if (isBrsNumber(left) && isBrsNumber(right)) {
                     return left.subtract(right);
                 } else {
-                    BrsError.typeMismatch({
-                        message: "Attempting to subtract non-numeric values.",
-                        left: left,
-                        right: right,
-                        line: expression.token.line
-                    });
-                    return BrsInvalid.Instance;
+                    return this.addError(
+                        new TypeMismatch({
+                            message: "Attempting to subtract non-numeric values.",
+                            left: {
+                                type: left,
+                                location: expression.left.location
+                            },
+                            right: {
+                                type: right,
+                                location: expression.right.location
+                            }
+                        })
+                    );
                 }
             case Lexeme.Star:
+            case Lexeme.StarEqual:
                 if (isBrsNumber(left) && isBrsNumber(right)) {
                     return left.multiply(right);
                 } else {
-                    BrsError.typeMismatch({
-                        message: "Attempting to multiply non-numeric values.",
-                        left: left,
-                        right: right,
-                        line: expression.token.line
-                    });
-                    return BrsInvalid.Instance;
+                    return this.addError(
+                        new TypeMismatch({
+                            message: "Attempting to multiply non-numeric values.",
+                            left: {
+                                type: left,
+                                location: expression.left.location
+                            },
+                            right: {
+                                type: right,
+                                location: expression.right.location
+                            }
+                        })
+                    );
                 }
             case Lexeme.Caret:
+            case Lexeme.CaretEqual:
                 if (isBrsNumber(left) && isBrsNumber(right)) {
                     return left.pow(right);
                 } else {
-                    BrsError.typeMismatch({
-                        message: "Attempting to exponentiate non-numeric values.",
-                        left: left,
-                        right: right,
-                        line: expression.token.line
-                    });
-                    return BrsInvalid.Instance;
+                    return this.addError(
+                        new TypeMismatch({
+                            message: "Attempting to exponentiate non-numeric values.",
+                            left: {
+                                type: left,
+                                location: expression.left.location
+                            },
+                            right: {
+                                type: right,
+                                location: expression.right.location
+                            }
+                        })
+                    );
                 }
             case Lexeme.Slash:
+            case Lexeme.SlashEqual:
                 if (isBrsNumber(left) && isBrsNumber(right)) {
                     return left.divide(right);
                 }
-                BrsError.typeMismatch({
-                    message: "Attempting to dividie non-numeric values.",
-                    left: left,
-                    right: right,
-                    line: expression.token.line
-                });
-                return BrsInvalid.Instance;
+                return this.addError(
+                    new TypeMismatch({
+                        message: "Attempting to dividie non-numeric values.",
+                        left: {
+                            type: left,
+                            location: expression.left.location
+                        },
+                        right: {
+                            type: right,
+                            location: expression.right.location
+                        }
+                    })
+                );
             case Lexeme.Mod:
                 if (isBrsNumber(left) && isBrsNumber(right)) {
                     return left.modulo(right);
                 } else {
-                    BrsError.typeMismatch({
-                        message: "Attempting to modulo non-numeric values.",
-                        left: left,
-                        right: right,
-                        line: expression.token.line
-                    });
-                    return BrsInvalid.Instance;
+                    return this.addError(
+                        new TypeMismatch({
+                            message: "Attempting to modulo non-numeric values.",
+                            left: {
+                                type: left,
+                                location: expression.left.location
+                            },
+                            right: {
+                                type: right,
+                                location: expression.right.location
+                            }
+                        })
+                    );
                 }
             case Lexeme.Backslash:
+            case Lexeme.BackslashEqual:
                 if (isBrsNumber(left) && isBrsNumber(right)) {
                     return left.intDivide(right);
                 } else {
-                    BrsError.typeMismatch({
-                        message: "Attempting to integer-divide non-numeric values.",
-                        left: left,
-                        right: right,
-                        line: expression.token.line
-                    });
-                    return BrsInvalid.Instance;
+                    return this.addError(
+                        new TypeMismatch({
+                            message: "Attempting to integer-divide non-numeric values.",
+                            left: {
+                                type: left,
+                                location: expression.left.location
+                            },
+                            right: {
+                                type: right,
+                                location: expression.right.location
+                            }
+                        })
+                    );
                 }
             case Lexeme.Plus:
+            case Lexeme.PlusEqual:
                 if (isBrsNumber(left) && isBrsNumber(right)) {
                     return left.add(right);
                 } else if (isBrsString(left) && isBrsString(right)) {
                     return left.concat(right);
                 } else {
-                    BrsError.typeMismatch({
-                        message: "Attempting to add non-homogeneous values.",
-                        left: left,
-                        right: right,
-                        line: expression.token.line
-                    });
-                    return BrsInvalid.Instance;
+                    return this.addError(
+                        new TypeMismatch({
+                            message: "Attempting to add non-homogeneous values.",
+                            left: {
+                                type: left,
+                                location: expression.left.location
+                            },
+                            right: {
+                                type: right,
+                                location: expression.right.location
+                            }
+                        })
+                    );
                 }
             case Lexeme.Greater:
-                if (!isComparable(left) || !isComparable(right)) {
-                    BrsError.typeMismatch({
-                        message: "Attempting to compare non-primitive values.",
-                        left: left,
-                        right: right,
-                        line: expression.token.line
-                    });
-                    return BrsInvalid.Instance;
+                if (!canCompare(left, lexeme, right)) {
+                    return this.addError(
+                        new TypeMismatch({
+                            message: "Attempting to compare non-primitive values.",
+                            left: {
+                                type: left,
+                                location: expression.left.location
+                            },
+                            right: {
+                                type: right,
+                                location: expression.right.location
+                            }
+                        })
+                    );
                 }
 
                 return left.greaterThan(right);
             case Lexeme.GreaterEqual:
-                if (!isComparable(left) || !isComparable(right)) {
-                    BrsError.typeMismatch({
-                        message: "Attempting to compare non-primitive values.",
-                        left: left,
-                        right: right,
-                        line: expression.token.line
-                    });
-                    return BrsInvalid.Instance;
+                if (!canCompare(left, lexeme, right)) {
+                    return this.addError(
+                        new TypeMismatch({
+                            message: "Attempting to compare non-primitive values.",
+                            left: {
+                                type: left,
+                                location: expression.left.location
+                            },
+                            right: {
+                                type: right,
+                                location: expression.right.location
+                            }
+                        })
+                    );
                 }
 
                 return left.greaterThan(right).or(left.equalTo(right));
             case Lexeme.Less:
-                if (!isComparable(left) || !isComparable(right)) {
-                    BrsError.typeMismatch({
-                        message: "Attempting to compare non-primitive values.",
-                        left: left,
-                        right: right,
-                        line: expression.token.line
-                    });
-                    return BrsInvalid.Instance;
+                if (!canCompare(left, lexeme, right)) {
+                    return this.addError(
+                        new TypeMismatch({
+                            message: "Attempting to compare non-primitive values.",
+                            left: {
+                                type: left,
+                                location: expression.left.location
+                            },
+                            right: {
+                                type: right,
+                                location: expression.right.location
+                            }
+                        })
+                    );
                 }
 
                 return left.lessThan(right);
             case Lexeme.LessEqual:
-                if (!isComparable(left) || !isComparable(right)) {
-                    BrsError.typeMismatch({
-                        message: "Attempting to compare non-primitive values.",
-                        left: left,
-                        right: right,
-                        line: expression.token.line
-                    });
-                    return BrsInvalid.Instance;
+                if (!canCompare(left, lexeme, right)) {
+                    return this.addError(
+                        new TypeMismatch({
+                            message: "Attempting to compare non-primitive values.",
+                            left: {
+                                type: left,
+                                location: expression.left.location
+                            },
+                            right: {
+                                type: right,
+                                location: expression.right.location
+                            }
+                        })
+                    );
                 }
 
                 return left.lessThan(right).or(left.equalTo(right));
             case Lexeme.Equal:
-                if (!isComparable(left) || !isComparable(right)) {
-                    BrsError.typeMismatch({
-                        message: "Attempting to compare non-primitive values.",
-                        left: left,
-                        right: right,
-                        line: expression.token.line
-                    });
-                    return BrsInvalid.Instance;
+                if (!canCompare(left, lexeme, right)) {
+                    return this.addError(
+                        new TypeMismatch({
+                            message: "Attempting to compare non-primitive values.",
+                            left: {
+                                type: left,
+                                location: expression.left.location
+                            },
+                            right: {
+                                type: right,
+                                location: expression.right.location
+                            }
+                        })
+                    );
                 }
 
                 return left.equalTo(right);
             case Lexeme.LessGreater:
-                if (!isComparable(left) || !isComparable(right)) {
-                    BrsError.typeMismatch({
-                        message: "Attempting to compare non-primitive values.",
-                        left: left,
-                        right: right,
-                        line: expression.token.line
-                    });
-                    return BrsInvalid.Instance;
+                if (!canCompare(left, lexeme, right)) {
+                    return this.addError(
+                        new TypeMismatch({
+                            message: "Attempting to compare non-primitive values.",
+                            left: {
+                                type: left,
+                                location: expression.left.location
+                            },
+                            right: {
+                                type: right,
+                                location: expression.right.location
+                            }
+                        })
+                    );
                 }
 
                 return left.equalTo(right).not();
@@ -387,13 +540,19 @@ export class Interpreter implements Expr.Visitor<BrsType>, Stmt.Visitor<BrsType>
                         return (left as BrsBoolean).and(right);
                     }
 
-                    BrsError.typeMismatch({
-                        message: "Attempting to 'and' boolean with non-boolean value",
-                        left: left,
-                        right: right,
-                        line: expression.token.line
-                    });
-                    return BrsInvalid.Instance;
+                    return this.addError(
+                        new TypeMismatch({
+                            message: "Attempting to 'and' boolean with non-boolean value",
+                            left: {
+                                type: left,
+                                location: expression.left.location
+                            },
+                            right: {
+                                type: right,
+                                location: expression.right.location
+                            }
+                        })
+                    );
                 } else if (isBrsNumber(left)) {
                     right = this.evaluate(expression.right);
 
@@ -403,21 +562,33 @@ export class Interpreter implements Expr.Visitor<BrsType>, Stmt.Visitor<BrsType>
                     }
 
                     // TODO: figure out how to handle 32-bit int AND 64-bit int
-                    BrsError.typeMismatch({
-                        message: "Attempting to bitwise 'and' number with non-numberic value",
-                        left: left,
-                        right: right,
-                        line: expression.token.line
-                    });
-                    return BrsInvalid.Instance;
+                    return this.addError(
+                        new TypeMismatch({
+                            message: "Attempting to bitwise 'and' number with non-numberic value",
+                            left: {
+                                type: left,
+                                location: expression.left.location
+                            },
+                            right: {
+                                type: right,
+                                location: expression.right.location
+                            }
+                        })
+                    );
                 } else {
-                    BrsError.typeMismatch({
-                        message: "Attempting to 'and' unexpected values",
-                        left: left,
-                        right: this.evaluate(expression.right),
-                        line: expression.token.line
-                    });
-                    return BrsInvalid.Instance;
+                    return this.addError(
+                        new TypeMismatch({
+                            message: "Attempting to 'and' unexpected values",
+                            left: {
+                                type: left,
+                                location: expression.left.location
+                            },
+                            right: {
+                                type: right,
+                                location: expression.right.location
+                            }
+                        })
+                    );
                 }
             case Lexeme.Or:
                 if (isBrsBoolean(left) && left.toBoolean()) {
@@ -428,13 +599,19 @@ export class Interpreter implements Expr.Visitor<BrsType>, Stmt.Visitor<BrsType>
                     if (isBrsBoolean(right)) {
                         return (left as BrsBoolean).or(right);
                     } else {
-                        BrsError.typeMismatch({
-                            message: "Attempting to 'or' boolean with non-boolean value",
-                            left: left,
-                            right: right,
-                            line: expression.token.line
-                        });
-                        return BrsInvalid.Instance;
+                        return this.addError(
+                            new TypeMismatch({
+                                message: "Attempting to 'or' boolean with non-boolean value",
+                                left: {
+                                    type: left,
+                                    location: expression.left.location
+                                },
+                                right: {
+                                    type: right,
+                                    location: expression.right.location
+                                }
+                            })
+                        );
                     }
                 } else if (isBrsNumber(left)) {
                     right = this.evaluate(expression.right);
@@ -443,28 +620,41 @@ export class Interpreter implements Expr.Visitor<BrsType>, Stmt.Visitor<BrsType>
                     }
 
                     // TODO: figure out how to handle 32-bit int OR 64-bit int
-                    BrsError.typeMismatch({
-                        message: "Attempting to bitwise 'or' number with non-numeric expression",
-                        left: left,
-                        right: right,
-                        line: expression.token.line
-                    });
-                    return BrsInvalid.Instance;
+                    return this.addError(
+                        new TypeMismatch({
+                            message: "Attempting to bitwise 'or' number with non-numeric expression",
+                            left: {
+                                type: left,
+                                location: expression.left.location
+                            },
+                            right: {
+                                type: right,
+                                location: expression.right.location
+                            }
+                        })
+                    );
                 } else {
-                    BrsError.typeMismatch({
-                        message: "Attempting to 'or' unexpected values",
-                        left: left,
-                        right: right,
-                        line: expression.token.line
-                    });
-                    return BrsInvalid.Instance;
+                    return this.addError(
+                        new TypeMismatch({
+                            message: "Attempting to 'or' unexpected values",
+                            left: {
+                                type: left,
+                                location: expression.left.location
+                            },
+                            right: {
+                                type: right,
+                                location: expression.right.location
+                            }
+                        })
+                    );
                 }
             default:
-                BrsError.make(
-                    `Received unexpected token kind '${expression.token.kind}'`,
-                    expression.token.line
+                return this.addError(
+                    new BrsError(
+                        `Received unexpected token kind '${expression.token.kind}'`,
+                        expression.token.location
+                    )
                 );
-                return BrsInvalid.Instance;
         }
     }
 
@@ -495,9 +685,11 @@ export class Interpreter implements Expr.Visitor<BrsType>, Stmt.Visitor<BrsType>
         const args = expression.args.map(this.evaluate, this);
 
         if (!isBrsCallable(callee)) {
-            throw BrsError.make(
-                `'${functionName}' is not a function and cannot be called.`,
-                expression.closingParen.line
+            return this.addError(
+                new BrsError(
+                    `'${functionName}' is not a function and cannot be called.`,
+                    expression.closingParen.location
+                )
             );
         }
 
@@ -507,7 +699,27 @@ export class Interpreter implements Expr.Visitor<BrsType>, Stmt.Visitor<BrsType>
 
         if (satisfiedSignature) {
             try {
-                return callee.call(this, ...args);
+                let mPointer = this._environment.getM();
+
+                if (expression.callee instanceof Expr.DottedGet || expression.callee instanceof Expr.IndexedGet) {
+                    let maybeM = this.evaluate(expression.callee.obj);
+                    if (maybeM.kind === ValueKind.Object) {
+                        if (maybeM instanceof AssociativeArray) {
+                            mPointer = maybeM;
+                        }
+                    } else {
+                        return this.addError(
+                            new BrsError("Attempted to retrieve a function from a primitive value", expression.closingParen.location)
+                        );
+                    }
+                }
+
+                return this.inSubEnv(
+                    (subInterpreter) => {
+                        subInterpreter.environment.setM(mPointer);
+                        return callee.call(this, ...args);
+                    }
+                );
             } catch (reason) {
                 if (reason.kind == null) {
                     throw new Error("Something terrible happened and we didn't throw a `BlockEnd` instance.");
@@ -515,16 +727,38 @@ export class Interpreter implements Expr.Visitor<BrsType>, Stmt.Visitor<BrsType>
 
                 let returnedValue = (reason as Stmt.ReturnValue).value;
                 let returnLocation = (reason as Stmt.ReturnValue).location;
-                if (satisfiedSignature.signature.returns !== ValueKind.Dynamic && satisfiedSignature.signature.returns !== returnedValue.kind) {
-                    throw BrsError.make(
-                        `Attempting to return value of type ${ValueKind.toString(returnedValue.kind)}, `
-                        + `but function ${callee.getName()} declares return value of type `
-                        + ValueKind.toString(satisfiedSignature.signature.returns),
-                        returnLocation.line
+
+                if (returnedValue && satisfiedSignature.signature.returns === ValueKind.Void) {
+                    this.addError(
+                        new Stmt.Runtime(
+                            `Attempting to return value of non-void type ${ValueKind.toString(returnedValue.kind)} `
+                            + `from function ${callee.getName()} with void return type.`,
+                            returnLocation.location
+                        )
                     );
                 }
 
-                return returnedValue;
+                if (!returnedValue && satisfiedSignature.signature.returns !== ValueKind.Void) {
+                    this.addError(
+                        new Stmt.Runtime(
+                            `Attempting to return void value from function ${callee.getName()} with non-void return type.`,
+                            returnLocation.location
+                        )
+                    );
+                }
+
+                if (returnedValue && satisfiedSignature.signature.returns !== ValueKind.Dynamic && satisfiedSignature.signature.returns !== returnedValue.kind) {
+                    this.addError(
+                        new Stmt.Runtime(
+                            `Attempting to return value of type ${ValueKind.toString(returnedValue.kind)}, `
+                            + `but function ${callee.getName()} declares return value of type `
+                            + ValueKind.toString(satisfiedSignature.signature.returns),
+                            returnLocation.location
+                        )
+                    );
+                }
+
+                return returnedValue || BrsInvalid.Instance;
             }
         } else {
             function formatMismatch(mismatchedSignature: SignatureAndMismatches) {
@@ -534,7 +768,7 @@ export class Interpreter implements Expr.Visitor<BrsType>, Stmt.Visitor<BrsType>
                 let messageParts = [];
 
                 let args = sig.args.map(a => {
-                    let requiredArg = `${a.name} as ${ValueKind.toString(a.type)}`;
+                    let requiredArg = `${a.name} as ${ValueKind.toString(a.type.kind)}`;
                     if (a.defaultValue) {
                         return `[${requiredArg}]`;
                     } else {
@@ -570,58 +804,78 @@ export class Interpreter implements Expr.Visitor<BrsType>, Stmt.Visitor<BrsType>
                 messages = mismatchedSignatures.map(formatMismatch);
             }
 
-            throw BrsError.make(
-                [header, ...messages].join("\n"),
-                expression.closingParen.line
+            return this.addError(
+                new BrsError(
+                    [header, ...messages].join("\n"),
+                    expression.closingParen.location
+                )
             );
         }
     }
 
     visitDottedGet(expression: Expr.DottedGet) {
         let source = this.evaluate(expression.obj);
-        if (!isIterable(source)) {
-            throw BrsError.typeMismatch({
-                message: "Attempting to retrieve property from non-iterable value",
-                line: expression.name.line,
-                left: source
-            });
-            return BrsInvalid.Instance;
-        }
 
-        try {
-            return source.get(new BrsString(expression.name.text));
-        } catch (err) {
-            throw BrsError.make(err.message, expression.name.line);
+        if (isIterable(source)) {
+            try {
+                return source.get(new BrsString(expression.name.text));
+            } catch (err) {
+                return this.addError(
+                    new BrsError(err.message, expression.name.location)
+                );
+            }
+        } else if (source instanceof BrsComponent) {
+            try {
+                return source.getMethod(expression.name.text) || BrsInvalid.Instance;
+            } catch (err) {
+                return this.addError(
+                    new BrsError(err.message, expression.name.location)
+                );
+            }
+        } else {
+            throw new TypeMismatch({
+                message: "Attempting to retrieve property from non-iterable value",
+                left: {
+                    type: source,
+                    location: expression.location
+                }
+            });
         }
     }
 
     visitIndexedGet(expression: Expr.IndexedGet): BrsType {
         let source = this.evaluate(expression.obj);
         if (!isIterable(source)) {
-            BrsError.typeMismatch({
+            throw new TypeMismatch({
                 message: "Attempting to retrieve property from non-iterable value",
-                line: expression.closingSquare.line,
-                left: source
+                left: {
+                    type: source,
+                    location: expression.location
+                }
             });
-            return BrsInvalid.Instance;
         }
 
         let index = this.evaluate(expression.index);
         if (!isBrsNumber(index) && !isBrsString(index)) {
-            BrsError.typeMismatch({
+            throw new TypeMismatch({
                 message: "Attempting to retrieve property from iterable with illegal index type",
-                line: expression.closingSquare.line,
-                left: source,
-                right: index
+                left: {
+                    type: source,
+                    location: expression.obj.location
+                },
+                right: {
+                    type: index,
+                    location: expression.index.location
+                }
             });
-
-            return BrsInvalid.Instance;
         }
 
         try {
             return source.get(index);
         } catch (err) {
-            throw BrsError.make(err.message, expression.closingSquare.line);
+            return this.addError(
+                new BrsError(err.message, expression.closingSquare.location)
+            );
         }
     }
 
@@ -638,11 +892,30 @@ export class Interpreter implements Expr.Visitor<BrsType>, Stmt.Visitor<BrsType>
 
         const counterName = statement.counterDeclaration.name;
         const step = new Stmt.Assignment(
+            { equals: statement.tokens.for },
             counterName,
             new Expr.Binary(
                 new Expr.Variable(counterName),
-                { kind: Lexeme.Plus, text: "+", line: counterName.line },
-                new Expr.Literal(increment)
+                {
+                    kind: Lexeme.Plus,
+                    text: "+",
+                    isReserved: false,
+                    location: {
+                        start: {
+                            line: -1,
+                            column: -1
+                        },
+                        end: {
+                            line: -1,
+                            column: -1
+                        },
+                        file: "(internal)"
+                    }
+                },
+                new Expr.Literal(
+                    increment,
+                    statement.increment.location
+                )
             )
         );
 
@@ -684,10 +957,12 @@ export class Interpreter implements Expr.Visitor<BrsType>, Stmt.Visitor<BrsType>
     visitForEach(statement: Stmt.ForEach): BrsType {
         let target = this.evaluate(statement.target);
         if (!isIterable(target)) {
-            throw BrsError.make(
-                `Attempting to iterate across values of non-iterable type ` +
-                    ValueKind.toString(target.kind),
-                statement.item.line
+            return this.addError(
+                new BrsError(
+                    `Attempting to iterate across values of non-iterable type ` +
+                        ValueKind.toString(target.kind),
+                    statement.item.location
+                )
             );
         }
 
@@ -776,30 +1051,28 @@ export class Interpreter implements Expr.Visitor<BrsType>, Stmt.Visitor<BrsType>
         );
     }
 
-    visitLogical(expression: Expr.Logical) {
-        return BrsInvalid.Instance;
-    }
-    visitM(expression: Expr.M) {
-        return BrsInvalid.Instance;
-    }
-
     visitDottedSet(statement: Stmt.DottedSet) {
         let source = this.evaluate(statement.obj);
         let value = this.evaluate(statement.value);
 
         if (!isIterable(source)) {
-            throw BrsError.typeMismatch({
-                message: "Attempting to set property on non-iterable value",
-                line: statement.name.line,
-                left: source
-            });
-            return BrsInvalid.Instance;
+            return this.addError(
+                new TypeMismatch({
+                    message: "Attempting to set property on non-iterable value",
+                    left: {
+                        type: source,
+                        location: statement.name.location
+                    }
+                })
+            );
         }
 
         try {
             source.set(new BrsString(statement.name.text), value);
         } catch (err) {
-            throw BrsError.make(err.message, statement.name.line);
+            return this.addError(
+                new BrsError(err.message, statement.name.location)
+            );
         }
 
         return BrsInvalid.Instance;
@@ -809,24 +1082,32 @@ export class Interpreter implements Expr.Visitor<BrsType>, Stmt.Visitor<BrsType>
         let source = this.evaluate(statement.obj);
 
         if (!isIterable(source)) {
-            BrsError.typeMismatch({
-                message: "Attempting to set property on non-iterable value",
-                line: statement.closingSquare.line,
-                left: source
-            });
-            return BrsInvalid.Instance;
+            return this.addError(
+                new TypeMismatch({
+                    message: "Attempting to set property on non-iterable value",
+                    left: {
+                        type: source,
+                        location: statement.obj.location
+                    }
+                })
+            );
         }
 
         let index = this.evaluate(statement.index);
         if (!isBrsNumber(index) && !isBrsString(index)) {
-            BrsError.typeMismatch({
-                message: "Attempting to set property on iterable with illegal index type",
-                line: statement.closingSquare.line,
-                left: source,
-                right: index
-            });
-
-            return BrsInvalid.Instance;
+            return this.addError(
+                new TypeMismatch({
+                    message: "Attempting to set property on iterable with illegal index type",
+                    left: {
+                        type: source,
+                        location: statement.obj.location
+                    },
+                    right: {
+                        type: index,
+                        location: statement.index.location
+                    }
+                })
+            );
         }
 
         let value = this.evaluate(statement.value);
@@ -834,7 +1115,9 @@ export class Interpreter implements Expr.Visitor<BrsType>, Stmt.Visitor<BrsType>
         try {
             source.set(index, value);
         } catch (err) {
-            throw BrsError.make(err.message, statement.closingSquare.line);
+            return this.addError(
+                new BrsError(err.message, statement.closingSquare.location)
+            );
         }
 
         return BrsInvalid.Instance;
@@ -848,23 +1131,25 @@ export class Interpreter implements Expr.Visitor<BrsType>, Stmt.Visitor<BrsType>
                 if (isBrsNumber(right)) {
                     return right.multiply(new Int32(-1));
                 } else {
-                    BrsError.make(
-                        `Attempting to negate non-numeric value.
-                        value type: ${ValueKind.toString(right.kind)}`,
-                        expression.operator.line
+                    return this.addError(
+                        new BrsError(
+                            `Attempting to negate non-numeric value.
+                            value type: ${ValueKind.toString(right.kind)}`,
+                            expression.operator.location
+                        )
                     );
-                    return BrsInvalid.Instance;
                 }
             case Lexeme.Not:
                 if (isBrsBoolean(right)) {
                     return right.not();
                 } else {
-                    BrsError.make(
-                        `Attempting to NOT non-boolean value.
-                        value type: ${ValueKind.toString(right.kind)}`,
-                        expression.operator.line
+                    return this.addError(
+                        new BrsError(
+                            `Attempting to NOT non-boolean value.
+                            value type: ${ValueKind.toString(right.kind)}`,
+                            expression.operator.location
+                        )
                     );
-                    return BrsInvalid.Instance;
                 }
         }
 
@@ -889,5 +1174,15 @@ export class Interpreter implements Expr.Visitor<BrsType>, Stmt.Visitor<BrsType>
 
     execute(this: Interpreter, statement: Stmt.Statement): BrsType {
         return statement.accept<BrsType>(this);
+    }
+
+    /**
+     * Emits an error via this processor's `events` property, then throws it.
+     * @param err the ParseError to emit then throw
+     */
+    private addError(err: BrsError): never {
+        this.errors.push(err);
+        this.events.emit("err", err);
+        throw err;
     }
 }
